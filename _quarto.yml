@@ -7,13 +7,14 @@ website:
   title: "Minimal Quarto Lab Book"
   sidebar:
     smooth-scroll: true
-    logo: img/logo.png
+    # logo: img/logo.png
     style: "docked"
     search: true
     collapse-level: 1
     contents:
       - index.qmd
       - notebook.ipynb
+      - dummy.ipynb
 
 
 
