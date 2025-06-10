@@ -48,5 +48,29 @@
     "crumbs": [
       "My simple example"
     ]
+  },
+  {
+    "objectID": "diary/log.html",
+    "href": "diary/log.html",
+    "title": "Log",
+    "section": "",
+    "text": "No matching items"
+  },
+  {
+    "objectID": "diary/simple-entry.html",
+    "href": "diary/simple-entry.html",
+    "title": "Checking if jupyter entries work",
+    "section": "",
+    "text": "a = []\nprint(a)\n\n[]"
+  },
+  {
+    "objectID": "log.html",
+    "href": "log.html",
+    "title": "Log",
+    "section": "",
+    "text": "Order By\n      Default\n      \n        Date - Oldest\n      \n      \n        Date - Newest\n      \n      \n        Title\n      \n      \n        Author\n      \n    \n  \n    \n      \n      \n    \n\n\n\n\n\n\nDate\n\n\n\nTitle\n\n\n\nAuthor\n\n\n\n\n\n\n\n\nJun 10, 2025\n\n\nChecking if jupyter entries work\n\n\nDee Uchaeva\n\n\n\n\n\n\nNo matching items",
+    "crumbs": [
+      "Log"
+    ]
   }
 ]

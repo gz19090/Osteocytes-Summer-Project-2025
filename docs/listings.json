@@ -1,0 +1,12 @@
+[
+  {
+    "listing": "/diary/log.html",
+    "items": []
+  },
+  {
+    "listing": "/log.html",
+    "items": [
+      "/diary/simple-entry.html"
+    ]
+  }
+]
