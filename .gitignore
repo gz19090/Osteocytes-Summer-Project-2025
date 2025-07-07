@@ -1,4 +1,7 @@
-/Osteocytes culture/data/*
+/Osteocytes culture/data/raw/*
+/Osteocytes culture/data/processed/*
+/Osteocytes culture/results/figures/*
+/Osteocytes culture/results/metrics/*
 .DS_Store
 
 /.quarto/
