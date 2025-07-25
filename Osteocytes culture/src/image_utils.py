@@ -6,6 +6,11 @@ from skimage.exposure import rescale_intensity
 from skimage.util import invert
 from pathlib import Path
 from typing import List, Tuple
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def load_video(video_path: str, crop_height: int = 860, resize_shape: Tuple[int, int] = (512, 512)) -> List[np.ndarray]:
     """Load video and preprocess frames.
@@ -56,18 +61,9 @@ def correct_background(image: np.ndarray) -> np.ndarray:
     return rescale_intensity(corrected, out_range=(0, 1))
 
 def apply_fourier_filter(image: np.ndarray) -> np.ndarray:
-    """Apply parabolic Fourier transform filter.
-    
-    Args:
-        image (np.ndarray): Input image.
-    
-    Returns:
-        np.ndarray: Filtered image.
-    """
     img = image.astype(float) - image.mean()
     fft = np.fft.fft2(img)
     fft_shifted = np.fft.fftshift(fft)
-    
     rows, cols = img.shape
     mask = np.zeros((rows, cols))
     center_row = rows // 2
@@ -79,11 +75,42 @@ def apply_fourier_filter(image: np.ndarray) -> np.ndarray:
     for c in range(cols):
         mask[:, c] = (r[:, c] >= bottom_parabola[c]) & (r[:, c] <= top_parabola[c])
     mask = gaussian(mask, sigma=100)
-    
     masked_fft = fft_shifted * mask
     product = np.fft.ifftshift(masked_fft)
     recovered = np.fft.ifft2(product).real
-    return rescale_intensity(recovered, out_range=(0, 1))
+    recovered = rescale_intensity(recovered, out_range=(0, 1))
+    logger.debug(f"Fourier filter output shape: {recovered.shape}, has NaN: {np.any(np.isnan(recovered))}")
+    return recovered
+
+# def apply_fourier_filter(image: np.ndarray) -> np.ndarray:
+#     """Apply parabolic Fourier transform filter.
+    
+#     Args:
+#         image (np.ndarray): Input image.
+    
+#     Returns:
+#         np.ndarray: Filtered image.
+#     """
+#     img = image.astype(float) - image.mean()
+#     fft = np.fft.fft2(img)
+#     fft_shifted = np.fft.fftshift(fft)
+    
+#     rows, cols = img.shape
+#     mask = np.zeros((rows, cols))
+#     center_row = rows // 2
+#     parabola_width, parabola_height = 150, 30
+#     col_indices = np.arange(cols) - cols // 2
+#     top_parabola = center_row + parabola_height * (col_indices / parabola_width) ** 2
+#     bottom_parabola = center_row - parabola_height * (col_indices / parabola_width) ** 2
+#     r, c = np.indices((rows, cols))
+#     for c in range(cols):
+#         mask[:, c] = (r[:, c] >= bottom_parabola[c]) & (r[:, c] <= top_parabola[c])
+#     mask = gaussian(mask, sigma=100)
+    
+#     masked_fft = fft_shifted * mask
+#     product = np.fft.ifftshift(masked_fft)
+#     recovered = np.fft.ifft2(product).real
+#     return rescale_intensity(recovered, out_range=(0, 1))
 
 def save_image(image: np.ndarray, output_path: str) -> None:
     """Save image to file.

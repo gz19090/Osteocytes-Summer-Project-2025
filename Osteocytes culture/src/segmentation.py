@@ -14,20 +14,53 @@ except ImportError:
     CELLPOSE_AVAILABLE = False
 from skimage.segmentation import random_walker
 from skimage.measure import regionprops, label
+import logging
 
-def apply_edge_filters(image: np.ndarray) -> np.ndarray:
+# Set up logging
+logger = logging.getLogger(__name__)
+
+def apply_edge_filters(image: np.ndarray) -> tuple[np.ndarray, list]:
     """Apply linear combination of edge filters.
     
     Args:
         image (np.ndarray): Input image.
     
     Returns:
-        np.ndarray: Combined edge-filtered image.
+        tuple: (Combined edge-filtered image, weights for edge filters).
     """
+    if not isinstance(image, np.ndarray) or image.ndim != 2:
+        logger.error(f"Invalid input image shape: {image.shape if isinstance(image, np.ndarray) else type(image)}")
+        raise ValueError("Input image must be a 2D NumPy array.")
+    
+    if np.any(np.isnan(image)) or np.any(np.isinf(image)):
+        logger.warning("Input image contains NaN or Inf values. Replacing with zeros.")
+        image = np.nan_to_num(image, nan=0.0, posinf=0.0, neginf=0.0)
+    
     edge_filters = [sobel, scharr, prewitt, roberts, farid, laplace]
-    filtered_imgs = [f(image).ravel() for f in edge_filters]
-    X = np.stack(filtered_imgs, axis=1)
+    filtered_imgs = []
+    for f in edge_filters:
+        try:
+            filtered = f(image)
+            if filtered.shape != image.shape:
+                logger.error(f"Filter {f.__name__} produced output shape {filtered.shape}, expected {image.shape}")
+                raise ValueError(f"Filter {f.__name__} shape mismatch")
+            filtered_imgs.append(filtered.ravel())
+            logger.debug(f"Filter {f.__name__} output shape: {filtered.shape}, flattened length: {len(filtered.ravel())}")
+        except Exception as e:
+            logger.error(f"Error applying filter {f.__name__}: {e}")
+            raise
+    
+    try:
+        X = np.stack(filtered_imgs, axis=1)
+        logger.debug(f"Stacked filtered images shape: {X.shape}")
+    except Exception as e:
+        logger.error(f"Error stacking filtered images: {e}")
+        raise
+    
     y = image.ravel()
+    if len(y) != X.shape[0]:
+        logger.error(f"Shape mismatch: y length {len(y)}, X rows {X.shape[0]}")
+        raise ValueError("Shape mismatch between input image and filtered images")
     
     reg = LinearRegression(fit_intercept=False)
     reg.fit(X, y)
@@ -38,7 +71,10 @@ def apply_edge_filters(image: np.ndarray) -> np.ndarray:
     max_val = combined.max()
     if max_val > min_val:
         combined = (combined - min_val) / (max_val - min_val)
-    return combined
+    else:
+        logger.warning("Combined image has no range (max_val == min_val). Returning unnormalized.")
+    
+    return combined, weights
 
 def segment_cells(image: np.ndarray, min_area: int = 10, use_percentile: bool = False, 
                  percentile: float = 87, crop: tuple = None) -> tuple:
@@ -59,7 +95,7 @@ def segment_cells(image: np.ndarray, min_area: int = 10, use_percentile: bool = 
         image = image[y1:y2, x1:x2]
     
     image = invert(image)
-    combined = apply_edge_filters(image)
+    combined, weights = apply_edge_filters(image)
     
     if use_percentile:
         thresh = np.percentile(combined, percentile)
@@ -96,17 +132,14 @@ def segment_cells_cellpose(image: np.ndarray) -> np.ndarray:
     if not CELLPOSE_AVAILABLE:
         raise ImportError("Cellpose is not installed. Run 'pip install cellpose'.")
     
-    # Convert image to float32 to avoid BFloat16 issues
     image = image.astype(np.float32)
-    
-    # Try MPS, fallback to CPU if MPS fails
     try:
         device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
         model = models.CellposeModel(gpu=(device.type == "mps"), device=device)
         masks, _, _, _ = model.eval([scharr(image)], diameter=None, channels=[0, 0])
     except Exception as e:
         print(f"MPS failed: {e}. Falling back to CPU.")
-        device = torch.device("cpu")
+        device = torch.device个体
         model = models.CellposeModel(gpu=False, device=device)
         masks, _, _, _ = model.eval([scharr(image)], diameter=None, channels=[0, 0])
     

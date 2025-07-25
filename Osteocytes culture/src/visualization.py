@@ -90,26 +90,41 @@ def plot_segmentation(image: np.ndarray, combined: np.ndarray, labeled: np.ndarr
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.close()
 
-def plot_histograms(image: np.ndarray, areas: list, output_path: str):
-    """Plot intensity and area histograms.
+def plot_histograms(image: np.ndarray, areas: list, dendritic_lengths: list, eccentricities: list, solidities: list, output_path: str):
+    """Plot intensity, area, dendritic length, and eccentricity histograms.
     
     Args:
         image (np.ndarray): Input image.
         areas (list): List of cell areas.
+        dendritic_lengths (list): List of dendritic lengths.
+        eccentricities (list): List of eccentricities.
+        solidities (list): List of solidities.
         output_path (str): Path to save figure.
     """
-    plt.figure(figsize=(12, 4))
+    plt.figure(figsize=(16, 4))
     
-    plt.subplot(1, 2, 1)
+    plt.subplot(1, 4, 1)
     plt.hist(image.ravel(), bins=128)
     plt.title('Histogram of Image Intensity')
     plt.xlabel('Intensity')
     plt.ylabel('Count')
     
-    plt.subplot(1, 2, 2)
+    plt.subplot(1, 4, 2)
     plt.hist(areas, bins=20)
     plt.title('Cell Area Distribution')
     plt.xlabel('Area (pixels)')
+    plt.ylabel('Count')
+    
+    plt.subplot(1, 4, 3)
+    plt.hist(dendritic_lengths, bins=20)
+    plt.title('Dendritic Length Distribution')
+    plt.xlabel('Length (pixels)')
+    plt.ylabel('Count')
+    
+    plt.subplot(1, 4, 4)
+    plt.hist(eccentricities, bins=20)
+    plt.title('Eccentricity Distribution')
+    plt.xlabel('Eccentricity')
     plt.ylabel('Count')
     
     plt.tight_layout()

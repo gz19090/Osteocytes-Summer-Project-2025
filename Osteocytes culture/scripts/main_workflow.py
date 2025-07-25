@@ -2,7 +2,6 @@ import sys
 from pathlib import Path
 import pandas as pd
 from skimage.filters import sobel, scharr, prewitt, roberts, farid, laplace
-from sklearn.linear_model import LinearRegression
 import argparse
 import logging
 import numpy as np
@@ -29,28 +28,14 @@ from src.segmentation import apply_edge_filters, segment_cells
 from src.analysis import analyze_cells, analyze_dendrites
 from src.visualization import plot_edge_filters, plot_combined_image, plot_contours, plot_segmentation, plot_histograms
 
-def compute_edge_weights(image: np.ndarray) -> list:
-    """Compute weights for edge filters.
-    
-    Args:
-        image (np.ndarray): Input image.
-    
-    Returns:
-        list: Weights for edge filters.
-    """
-    edge_filters = [sobel, scharr, prewitt, roberts, farid, laplace]
-    filtered_imgs = [f(image).ravel() for f in edge_filters]
-    X = np.stack(filtered_imgs, axis=1)
-    y = image.ravel()
-    reg = LinearRegression(fit_intercept=False)
-    reg.fit(X, y)
-    return reg.coef_
-
-def main(max_frames: int = None):
-    """Process videos in wildtype and mutant subfolders, with optional frame limit.
+def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = False, crop: tuple = None):
+    """Process videos in wildtype and mutant subfolders, with optional parameters.
     
     Args:
         max_frames (int, optional): Maximum number of frames to process per video. If None or 0, process all frames.
+        min_area (int): Minimum area for segmented objects.
+        use_percentile (bool): Use percentile thresholding instead of Otsu.
+        crop (tuple, optional): Crop region (y1, y2, x1, x2) or None for full image.
     """
     # If max_frames not provided, prompt user
     if max_frames is None:
@@ -60,6 +45,13 @@ def main(max_frames: int = None):
         except ValueError as e:
             logger.error(f"Invalid input for max_frames: {e}. Defaulting to all frames.")
             max_frames = 0
+    
+    # Log segmentation parameters
+    logger.info(f"Segmentation parameters: min_area={min_area}, use_percentile={use_percentile}")
+    if crop:
+        logger.info(f"Crop region: {crop}")
+    else:
+        logger.info("No cropping applied.")
     
     # Paths
     data_dir = Path('data/raw')
@@ -113,16 +105,21 @@ def main(max_frames: int = None):
                     filtered = apply_fourier_filter(corrected)
                     
                     # Process full image
-                    combined = apply_edge_filters(filtered)
-                    weights = compute_edge_weights(filtered)
-                    labeled, _, contours = segment_cells(combined)
+                    combined, weights = apply_edge_filters(filtered)
+                    labeled, _, contours = segment_cells(filtered, min_area=min_area, use_percentile=use_percentile, crop=None)
                     
-                    # Process cropped region
-                    crop = (40, 150, 250, 512)  # y1, y2, x1, x2
-                    cropped = filtered[crop[0]:crop[1], crop[2]:crop[3]]
-                    combined_cropped = apply_edge_filters(cropped)
-                    weights_cropped = compute_edge_weights(cropped)
-                    labeled_cropped, _, contours_cropped = segment_cells(combined_cropped)
+                    # Process cropped image (if specified)
+                    if crop:
+                        y1, y2, x1, x2 = crop
+                        if y1 < y2 <= filtered.shape[0] and x1 < x2 <= filtered.shape[1]:
+                            cropped = filtered[y1:y2, x1:x2]
+                            combined_cropped, weights_cropped = apply_edge_filters(cropped)
+                            labeled_cropped, _, contours_cropped = segment_cells(cropped, min_area=min_area, use_percentile=use_percentile, crop=None)
+                        else:
+                            logger.warning(f"Invalid crop {crop} for frame {frame_idx}. Skipping cropped processing.")
+                            cropped, combined_cropped, weights_cropped, labeled_cropped, contours_cropped = None, None, None, None, None
+                    else:
+                        cropped, combined_cropped, weights_cropped, labeled_cropped, contours_cropped = None, None, None, None, None
                     
                     # Analysis
                     cell_metrics = analyze_cells(labeled, filtered)
@@ -133,35 +130,35 @@ def main(max_frames: int = None):
                     cell_metrics['dendritic_length'] = dendrite_metrics['dendritic_length']
                     metrics.append(cell_metrics)
                     
-                    cell_metrics_cropped = analyze_cells(labeled_cropped, cropped)
-                    dendrite_metrics_cropped = analyze_dendrites(labeled_cropped > 0, index=cell_metrics_cropped.index)
-                    cell_metrics_cropped['video'] = f'{video_path.stem}_cropped'
-                    cell_metrics_cropped['frame'] = frame_idx
-                    cell_metrics_cropped['condition'] = condition
-                    cell_metrics_cropped['dendritic_length'] = dendrite_metrics_cropped['dendritic_length']
-                    metrics.append(cell_metrics_cropped)
+                    if cropped is not None:
+                        cell_metrics_cropped = analyze_cells(labeled_cropped, cropped)
+                        dendrite_metrics_cropped = analyze_dendrites(labeled_cropped > 0, index=cell_metrics_cropped.index)
+                        cell_metrics_cropped['video'] = f'{video_path.stem}_cropped'
+                        cell_metrics_cropped['frame'] = frame_idx
+                        cell_metrics_cropped['condition'] = condition
+                        cell_metrics_cropped['dendritic_length'] = dendrite_metrics_cropped['dendritic_length']
+                        metrics.append(cell_metrics_cropped)
                     
                     # Save outputs
                     frame_prefix = f'{condition}_{video_path.stem}_frame_{frame_idx:04d}'
                     save_image(filtered, str(video_output_dir / f'{frame_prefix}_filtered.tif'))
                     save_image(combined, str(video_output_dir / f'{frame_prefix}_combined.tif'))
                     save_image(labeled, str(video_output_dir / f'{frame_prefix}_labeled.tif'))
-                    save_image(cropped, str(video_output_dir / f'{frame_prefix}_cropped.tif'))
-                    save_image(combined_cropped, str(video_output_dir / f'{frame_prefix}_combined_cropped.tif'))
-                    save_image(labeled_cropped, str(video_output_dir / f'{frame_prefix}_labeled_cropped.tif'))
-                    
-                    # Visualize
                     plot_edge_filters(filtered, str(video_results_dir / f'{frame_prefix}_edge_filters.png'))
                     plot_combined_image(filtered, combined, weights, str(video_results_dir / f'{frame_prefix}_combined.png'))
                     plot_contours(combined, contours, str(video_results_dir / f'{frame_prefix}_contours.png'))
                     plot_segmentation(filtered, combined, labeled, str(video_results_dir / f'{frame_prefix}_segmentation.png'))
-                    plot_histograms(filtered, cell_metrics['area'].tolist(), str(video_results_dir / f'{frame_prefix}_histograms.png'))
+                    plot_histograms(filtered, cell_metrics['area'].tolist(), cell_metrics['dendritic_length'].tolist(), cell_metrics['eccentricity'].tolist(), cell_metrics['solidity'].tolist(), str(video_results_dir / f'{frame_prefix}_histograms.png'))
                     
-                    plot_edge_filters(cropped, str(video_results_dir / f'{frame_prefix}_edge_filters_cropped.png'))
-                    plot_combined_image(cropped, combined_cropped, weights_cropped, str(video_results_dir / f'{frame_prefix}_combined_cropped.png'))
-                    plot_contours(combined_cropped, contours_cropped, str(video_results_dir / f'{frame_prefix}_contours_cropped.png'))
-                    plot_segmentation(cropped, combined_cropped, labeled_cropped, str(video_results_dir / f'{frame_prefix}_segmentation_cropped.png'))
-                    plot_histograms(cropped, cell_metrics_cropped['area'].tolist(), str(video_results_dir / f'{frame_prefix}_histograms_cropped.png'))
+                    if cropped is not None:
+                        save_image(cropped, str(video_output_dir / f'{frame_prefix}_cropped.tif'))
+                        save_image(combined_cropped, str(video_output_dir / f'{frame_prefix}_combined_cropped.tif'))
+                        save_image(labeled_cropped, str(video_output_dir / f'{frame_prefix}_labeled_cropped.tif'))
+                        plot_edge_filters(cropped, str(video_results_dir / f'{frame_prefix}_edge_filters_cropped.png'))
+                        plot_combined_image(cropped, combined_cropped, weights_cropped, str(video_results_dir / f'{frame_prefix}_combined_cropped.png'))
+                        plot_contours(combined_cropped, contours_cropped, str(video_results_dir / f'{frame_prefix}_contours_cropped.png'))
+                        plot_segmentation(cropped, combined_cropped, labeled_cropped, str(video_results_dir / f'{frame_prefix}_segmentation_cropped.png'))
+                        plot_histograms(cropped, cell_metrics_cropped['area'].tolist(), cell_metrics_cropped['dendritic_length'].tolist(), cell_metrics_cropped['eccentricity'].tolist(), cell_metrics_cropped['solidity'].tolist(), str(video_results_dir / f'{frame_prefix}_histograms_cropped.png'))
                 except Exception as e:
                     logger.error(f"Error processing frame {frame_idx} of {video_path}: {e}")
                     continue
@@ -181,8 +178,14 @@ def main(max_frames: int = None):
     logger.info("Processing complete.")
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Process osteocyte videos with optional frame limit.")
+    parser = argparse.ArgumentParser(description="Process osteocyte videos with optional parameters.")
     parser.add_argument('--max-frames', type=int, default=None, 
                         help='Maximum number of frames to process per video (default: None, prompts user)')
+    parser.add_argument('--min-area', type=int, default=10, 
+                        help='Minimum area for segmented objects (default: 10)')
+    parser.add_argument('--use-percentile', action='store_true', 
+                        help='Use percentile thresholding instead of Otsu (default: False)')
+    parser.add_argument('--crop', type=int, nargs=4, default=None, 
+                        help='Crop region as y1 y2 x1 x2 (default: None, no cropping)')
     args = parser.parse_args()
-    main(max_frames=args.max_frames)
+    main(max_frames=args.max_frames, min_area=args.min_area, use_percentile=args.use_percentile, crop=args.crop)
