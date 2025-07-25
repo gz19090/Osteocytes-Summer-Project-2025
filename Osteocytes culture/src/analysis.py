@@ -101,24 +101,55 @@ def analyze_dendrites(labeled_mask: np.ndarray, index: pd.Index = None) -> pd.Da
     """
     try:
         if index is None:
-            # Compute total dendritic length for the entire mask
             skeleton = skeletonize(labeled_mask > 0)
             total_length = np.sum(skeleton)
             return pd.DataFrame({'dendritic_length': [total_length]})
         else:
-            # Compute dendritic length per cell
             dendritic_lengths = []
             for label in index:
                 try:
-                    # Skeletonize individual cell mask
-                    cell_mask = labeled_mask == label
+                    cell_mask = (labeled_mask == label).astype(np.uint8)
                     skeleton = skeletonize(cell_mask)
                     length = np.sum(skeleton)
                     dendritic_lengths.append(length)
                 except Exception as e:
-                    logger.warning(f"Dendritic length failed for label {label}: {e}. Using NaN.")
-                    dendritic_lengths.append(np.nan)
+                    logger.warning(f"Dendritic length failed for label {label}: {e}. Using 0.")
+                    dendritic_lengths.append(0)
             return pd.DataFrame({'dendritic_length': dendritic_lengths}, index=index)
     except Exception as e:
         logger.error(f"Error in analyze_dendrites: {e}")
-        return pd.DataFrame({'dendritic_length': [np.nan] * (len(index) if index is not None else 1)})
+        return pd.DataFrame({'dendritic_length': [0] * (len(index) if index is not None else 1)})
+
+# def analyze_dendrites(labeled_mask: np.ndarray, index: pd.Index = None) -> pd.DataFrame:
+#     """Analyze dendritic processes by computing skeleton length per cell.
+    
+#     Args:
+#         labeled_mask (np.ndarray): Labeled cell mask (each cell has a unique label).
+#         index (pd.Index, optional): Index to align with cell metrics DataFrame.
+    
+#     Returns:
+#         pd.DataFrame: Dendritic length for each cell, aligned with the provided index.
+#     """
+#     try:
+#         if index is None:
+#             # Compute total dendritic length for the entire mask
+#             skeleton = skeletonize(labeled_mask > 0)
+#             total_length = np.sum(skeleton)
+#             return pd.DataFrame({'dendritic_length': [total_length]})
+#         else:
+#             # Compute dendritic length per cell
+#             dendritic_lengths = []
+#             for label in index:
+#                 try:
+#                     # Skeletonize individual cell mask
+#                     cell_mask = labeled_mask == label
+#                     skeleton = skeletonize(cell_mask)
+#                     length = np.sum(skeleton)
+#                     dendritic_lengths.append(length)
+#                 except Exception as e:
+#                     logger.warning(f"Dendritic length failed for label {label}: {e}. Using NaN.")
+#                     dendritic_lengths.append(np.nan)
+#             return pd.DataFrame({'dendritic_length': dendritic_lengths}, index=index)
+#     except Exception as e:
+#         logger.error(f"Error in analyze_dendrites: {e}")
+#         return pd.DataFrame({'dendritic_length': [np.nan] * (len(index) if index is not None else 1)})

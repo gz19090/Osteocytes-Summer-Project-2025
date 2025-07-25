@@ -77,7 +77,7 @@ def apply_edge_filters(image: np.ndarray) -> tuple[np.ndarray, list]:
     return combined, weights
 
 def segment_cells(image: np.ndarray, min_area: int = 10, use_percentile: bool = False, 
-                 percentile: float = 87, crop: tuple = None) -> tuple:
+                percentile: float = 87, crop: tuple = None) -> tuple:
     """Segment cells using contour-based approach.
     
     Args:

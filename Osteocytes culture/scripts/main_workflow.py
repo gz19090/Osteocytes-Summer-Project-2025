@@ -28,7 +28,7 @@ from src.segmentation import apply_edge_filters, segment_cells
 from src.analysis import analyze_cells, analyze_dendrites
 from src.visualization import plot_edge_filters, plot_combined_image, plot_contours, plot_segmentation, plot_histograms
 
-def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = False, crop: tuple = None):
+def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = False, percentile: float = 87, crop: tuple = None):
     """Process videos in wildtype and mutant subfolders, with optional parameters.
     
     Args:
@@ -106,7 +106,7 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                     
                     # Process full image
                     combined, weights = apply_edge_filters(filtered)
-                    labeled, _, contours = segment_cells(filtered, min_area=min_area, use_percentile=use_percentile, crop=None)
+                    labeled, _, contours = segment_cells(filtered, min_area=min_area, use_percentile=use_percentile, percentile=percentile, crop=None)
                     
                     # Process cropped image (if specified)
                     if crop:
@@ -114,7 +114,7 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                         if y1 < y2 <= filtered.shape[0] and x1 < x2 <= filtered.shape[1]:
                             cropped = filtered[y1:y2, x1:x2]
                             combined_cropped, weights_cropped = apply_edge_filters(cropped)
-                            labeled_cropped, _, contours_cropped = segment_cells(cropped, min_area=min_area, use_percentile=use_percentile, crop=None)
+                            labeled_cropped, _, contours_cropped = segment_cells(cropped, min_area=min_area, use_percentile=use_percentile, percentile=percentile, crop=None)
                         else:
                             logger.warning(f"Invalid crop {crop} for frame {frame_idx}. Skipping cropped processing.")
                             cropped, combined_cropped, weights_cropped, labeled_cropped, contours_cropped = None, None, None, None, None
@@ -185,6 +185,8 @@ if __name__ == '__main__':
                         help='Minimum area for segmented objects (default: 10)')
     parser.add_argument('--use-percentile', action='store_true', 
                         help='Use percentile thresholding instead of Otsu (default: False)')
+    parser.add_argument('--percentile', type=float, default=87, 
+                    help='Percentile for thresholding if use_percentile=True (default: 87)')
     parser.add_argument('--crop', type=int, nargs=4, default=None, 
                         help='Crop region as y1 y2 x1 x2 (default: None, no cropping)')
     args = parser.parse_args()
