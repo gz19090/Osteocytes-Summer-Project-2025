@@ -28,7 +28,13 @@ from src.segmentation import apply_edge_filters, segment_cells
 from src.analysis import analyze_cells, analyze_dendrites
 from src.visualization import plot_edge_filters, plot_combined_image, plot_contours, plot_segmentation, plot_histograms
 
+parser.add_argument('--percentile', type=float, default=87, 
+                    help='Percentile for thresholding if use_percentile=True (default: 87)')
+                    
 def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = False, percentile: float = 87, crop: tuple = None):
+    # Pass percentile to segment_cells
+    labeled, _, contours = segment_cells(filtered, min_area=min_area, use_percentile=use_percentile, percentile=percentile, crop=None)
+    labeled_cropped, _, contours_cropped = segment_cells(cropped, min_area=min_area, use_percentile=use_percentile, percentile=percentile, crop=None)
     """Process videos in wildtype and mutant subfolders, with optional parameters.
     
     Args:
