@@ -76,8 +76,53 @@ def apply_edge_filters(image: np.ndarray) -> tuple[np.ndarray, list]:
     
     return combined, weights
 
+# def segment_cells(image: np.ndarray, min_area: int = 10, use_percentile: bool = False, 
+#                 percentile: float = 87, crop: tuple = None) -> tuple:
+#     """Segment cells using contour-based approach.
+    
+#     Args:
+#         image (np.ndarray): Preprocessed image.
+#         min_area (int): Minimum area for objects.
+#         use_percentile (bool): Use percentile thresholding instead of Otsu.
+#         percentile (float): Percentile for thresholding (if use_percentile=True).
+#         crop (tuple): Crop region (y1, y2, x1, x2) or None for full image.
+    
+#     Returns:
+#         tuple: (Labeled segmentation mask, combined edge image, contours).
+#     """
+#     if crop:
+#         y1, y2, x1, x2 = crop
+#         image = image[y1:y2, x1:x2]
+    
+#     image = invert(image)
+#     combined, weights = apply_edge_filters(image)
+    
+#     if use_percentile:
+#         thresh = np.percentile(combined, percentile)
+#     else:
+#         thresh = threshold_otsu(combined)
+    
+#     contours = find_contours(combined, thresh)
+    
+#     segmentation_mask = np.zeros(combined.shape, dtype=np.uint16)
+#     current_label = 1
+#     for contour in contours:
+#         rr, cc = polygon(contour[:, 0], contour[:, 1], shape=combined.shape)
+#         existing_labels = segmentation_mask[rr, cc]
+#         unique_labels = np.unique(existing_labels[existing_labels > 0])
+#         if len(unique_labels) == 1:
+#             label_to_use = unique_labels[0]
+#         else:
+#             label_to_use = current_label
+#             current_label += 1
+#         segmentation_mask[rr, cc] = label_to_use
+    
+#     cleaned = remove_small_objects(segmentation_mask, min_size=min_area)
+#     return cleaned, combined, contours
+
+# Updated to include segmentation percentile
 def segment_cells(image: np.ndarray, min_area: int = 10, use_percentile: bool = False, 
-                percentile: float = 87, crop: tuple = None) -> tuple:
+                 percentile: float = 87, crop: tuple = None) -> tuple:
     """Segment cells using contour-based approach.
     
     Args:
@@ -90,6 +135,8 @@ def segment_cells(image: np.ndarray, min_area: int = 10, use_percentile: bool = 
     Returns:
         tuple: (Labeled segmentation mask, combined edge image, contours).
     """
+    import logging
+    logger = logging.getLogger(__name__)
     if crop:
         y1, y2, x1, x2 = crop
         image = image[y1:y2, x1:x2]
@@ -99,10 +146,13 @@ def segment_cells(image: np.ndarray, min_area: int = 10, use_percentile: bool = 
     
     if use_percentile:
         thresh = np.percentile(combined, percentile)
+        logger.debug(f"Using percentile threshold: {thresh} (percentile={percentile})")
     else:
         thresh = threshold_otsu(combined)
+        logger.debug(f"Using Otsu threshold: {thresh}")
     
     contours = find_contours(combined, thresh)
+    logger.debug(f"Found {len(contours)} contours")
     
     segmentation_mask = np.zeros(combined.shape, dtype=np.uint16)
     current_label = 1
@@ -118,6 +168,7 @@ def segment_cells(image: np.ndarray, min_area: int = 10, use_percentile: bool = 
         segmentation_mask[rr, cc] = label_to_use
     
     cleaned = remove_small_objects(segmentation_mask, min_size=min_area)
+    logger.debug(f"After filtering, {len(np.unique(cleaned)) - 1} objects remain")
     return cleaned, combined, contours
 
 def segment_cells_cellpose(image: np.ndarray) -> np.ndarray:
