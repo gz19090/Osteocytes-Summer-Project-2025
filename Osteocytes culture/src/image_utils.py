@@ -4,6 +4,7 @@ from skimage.filters import gaussian
 from skimage.transform import resize
 from skimage.exposure import rescale_intensity
 from skimage.util import invert
+from skimage.filters import threshold_local
 from pathlib import Path
 from typing import List, Tuple
 import logging
@@ -57,32 +58,27 @@ def correct_background(image: np.ndarray) -> np.ndarray:
     Returns:
         np.ndarray: Background-corrected image.
     """
-    # background = gaussian(image, sigma=50, preserve_range=True)
-    background = gaussian(image, sigma=20, preserve_range=True) # avoid over-smoothing small features
+    background = gaussian(image, sigma=20, preserve_range=True)
     corrected = image / (background / np.mean(background))
-    return rescale_intensity(corrected, out_range=(0, 1))
+    corrected = rescale_intensity(corrected, out_range=(0, 1))
+    # Add adaptive local thresholding to refine
+    local_thresh = threshold_local(corrected, block_size=35, method='gaussian')
+    corrected = corrected > local_thresh
+    return corrected
 
-# def apply_fourier_filter(image: np.ndarray) -> np.ndarray:
-#     img = image.astype(float) - image.mean()
-#     fft = np.fft.fft2(img)
-#     fft_shifted = np.fft.fftshift(fft)
-#     rows, cols = img.shape
-#     mask = np.zeros((rows, cols))
-#     center_row = rows // 2
-#     parabola_width, parabola_height = 150, 30
-#     col_indices = np.arange(cols) - cols // 2
-#     top_parabola = center_row + parabola_height * (col_indices / parabola_width) ** 2
-#     bottom_parabola = center_row - parabola_height * (col_indices / parabola_width) ** 2
-#     r, c = np.indices((rows, cols))
-#     for c in range(cols):
-#         mask[:, c] = (r[:, c] >= bottom_parabola[c]) & (r[:, c] <= top_parabola[c])
-#     mask = gaussian(mask, sigma=100)
-#     masked_fft = fft_shifted * mask
-#     product = np.fft.ifftshift(masked_fft)
-#     recovered = np.fft.ifft2(product).real
-#     recovered = rescale_intensity(recovered, out_range=(0, 1))
-#     logger.debug(f"Fourier filter output shape: {recovered.shape}, has NaN: {np.any(np.isnan(recovered))}")
-#     return recovered
+# def correct_background(image: np.ndarray) -> np.ndarray:
+#     """Apply background correction.
+    
+#     Args:
+#         image (np.ndarray): Input image.
+    
+#     Returns:
+#         np.ndarray: Background-corrected image.
+#     """
+#     # background = gaussian(image, sigma=50, preserve_range=True)
+#     background = gaussian(image, sigma=20, preserve_range=True) # avoid over-smoothing small features
+#     corrected = image / (background / np.mean(background))
+#     return rescale_intensity(corrected, out_range=(0, 1))
 
 def apply_fourier_filter(image: np.ndarray) -> np.ndarray:
     import logging
