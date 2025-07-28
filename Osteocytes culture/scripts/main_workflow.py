@@ -28,19 +28,14 @@ from src.segmentation import apply_edge_filters, segment_cells
 from src.analysis import analyze_cells, analyze_dendrites
 from src.visualization import plot_edge_filters, plot_combined_image, plot_contours, plot_segmentation, plot_histograms
 
-parser.add_argument('--percentile', type=float, default=87, 
-                    help='Percentile for thresholding if use_percentile=True (default: 87)')
-                    
-def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = False, percentile: float = 87, crop: tuple = None):
-    # Pass percentile to segment_cells
-    labeled, _, contours = segment_cells(filtered, min_area=min_area, use_percentile=use_percentile, percentile=percentile, crop=None)
-    labeled_cropped, _, contours_cropped = segment_cells(cropped, min_area=min_area, use_percentile=use_percentile, percentile=percentile, crop=None)
+def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = False, percentile: float = 87.0, crop: tuple = None):
     """Process videos in wildtype and mutant subfolders, with optional parameters.
     
     Args:
         max_frames (int, optional): Maximum number of frames to process per video. If None or 0, process all frames.
         min_area (int): Minimum area for segmented objects.
         use_percentile (bool): Use percentile thresholding instead of Otsu.
+        percentile (float): Percentile for thresholding if use_percentile=True.
         crop (tuple, optional): Crop region (y1, y2, x1, x2) or None for full image.
     """
     # If max_frames not provided, prompt user
@@ -53,7 +48,7 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
             max_frames = 0
     
     # Log segmentation parameters
-    logger.info(f"Segmentation parameters: min_area={min_area}, use_percentile={use_percentile}")
+    logger.info(f"Segmentation parameters: min_area={min_area}, use_percentile={use_percentile}, percentile={percentile}")
     if crop:
         logger.info(f"Crop region: {crop}")
     else:
@@ -154,8 +149,9 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                     plot_combined_image(filtered, combined, weights, str(video_results_dir / f'{frame_prefix}_combined.png'))
                     plot_contours(combined, contours, str(video_results_dir / f'{frame_prefix}_contours.png'))
                     plot_segmentation(filtered, combined, labeled, str(video_results_dir / f'{frame_prefix}_segmentation.png'))
+                    # plot_histograms(filtered, cell_metrics['area'].tolist(), str(video_results_dir / f'{frame_prefix}_histograms.png'))
                     plot_histograms(filtered, cell_metrics['area'].tolist(), cell_metrics['dendritic_length'].tolist(), cell_metrics['eccentricity'].tolist(), cell_metrics['solidity'].tolist(), str(video_results_dir / f'{frame_prefix}_histograms.png'))
-                    
+                   
                     if cropped is not None:
                         save_image(cropped, str(video_output_dir / f'{frame_prefix}_cropped.tif'))
                         save_image(combined_cropped, str(video_output_dir / f'{frame_prefix}_combined_cropped.tif'))
@@ -164,7 +160,9 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                         plot_combined_image(cropped, combined_cropped, weights_cropped, str(video_results_dir / f'{frame_prefix}_combined_cropped.png'))
                         plot_contours(combined_cropped, contours_cropped, str(video_results_dir / f'{frame_prefix}_contours_cropped.png'))
                         plot_segmentation(cropped, combined_cropped, labeled_cropped, str(video_results_dir / f'{frame_prefix}_segmentation_cropped.png'))
+                        # plot_histograms(cropped, cell_metrics_cropped['area'].tolist(), str(video_results_dir / f'{frame_prefix}_histograms_cropped.png'))
                         plot_histograms(cropped, cell_metrics_cropped['area'].tolist(), cell_metrics_cropped['dendritic_length'].tolist(), cell_metrics_cropped['eccentricity'].tolist(), cell_metrics_cropped['solidity'].tolist(), str(video_results_dir / f'{frame_prefix}_histograms_cropped.png'))
+
                 except Exception as e:
                     logger.error(f"Error processing frame {frame_idx} of {video_path}: {e}")
                     continue
@@ -192,8 +190,8 @@ if __name__ == '__main__':
     parser.add_argument('--use-percentile', action='store_true', 
                         help='Use percentile thresholding instead of Otsu (default: False)')
     parser.add_argument('--percentile', type=float, default=87, 
-                    help='Percentile for thresholding if use_percentile=True (default: 87)')
+                        help='Percentile for thresholding if use_percentile=True (default: 87)')
     parser.add_argument('--crop', type=int, nargs=4, default=None, 
                         help='Crop region as y1 y2 x1 x2 (default: None, no cropping)')
     args = parser.parse_args()
-    main(max_frames=args.max_frames, min_area=args.min_area, use_percentile=args.use_percentile, crop=args.crop)
+    main(max_frames=args.max_frames, min_area=args.min_area, use_percentile=args.use_percentile, percentile=args.percentile, crop=args.crop)
