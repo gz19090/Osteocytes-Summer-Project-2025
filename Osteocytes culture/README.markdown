@@ -120,7 +120,7 @@ jupyter notebook notebooks/morphology.ipynb
 
 ## Outputs
 
-All the ouputs are saved in `../results/morph_plots`
+All the ouputs are saved in `../results/morph_plots/`
 
 ## Dependencies
 See `requirements.txt`. Key libraries:
