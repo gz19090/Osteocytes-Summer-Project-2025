@@ -110,22 +110,17 @@ python scripts/main_workflow.py
   python scripts/main_workflow.py --max-frames 10 --min-area 10 --use-percentile --percentile 87 --crop 40 150 250 512 --num-wildtype 3 --num-mutant 3
   ```
 
-Explore interactively using Jupyter notebooks:
-- `notebooks/01_preprocessing.ipynb`: Background correction, Fourier filtering, edge filter optimization. Outputs saved in `data/processed/{condition}/{video_name}/` and `results/figures/{condition}/{video_name}/`.
-- `notebooks/02_segmentation.ipynb`: Contour-based cell segmentation. Outputs saved in `data/processed/{condition}/{video_name}/` and `results/figures/{condition}/{video_name}/`.
-- `notebooks/03_analysis.ipynb`: Full analysis (cell metrics, dendritic length) and visualizations. Metrics saved in `results/metrics/{condition}/{video_name}_metrics.csv`.
+Explore the morphological analysis using the Jupyter notebook `morphology.ipynb`:
 
 To run a notebook:
 ```bash
 cd /.../Osteocytes-Summer-Project-2025/Osteocytes culture
-jupyter notebook notebooks/01_preprocessing.ipynb
+jupyter notebook notebooks/morphology.ipynb
 ```
-- Enter the number of frames when prompted (e.g., "10" or "all").
 
 ## Outputs
-- **Processed Images**: Saved in `data/processed/{condition}/{video_name}/` (e.g., `filtered.tif`, `combined.tif`, `labeled.tif`, `cropped.tif`, `combined_cropped.tif`, `labeled_cropped.tif`).
-- **Visualizations**: Saved in `results/figures/{condition}/{video_name}/` (e.g., `preprocessing.png`, `edge_filters.png`, `combined.png`, `contours.png`, `segmentation.png`, `histograms.png`).
-- **Metrics**: Saved in `results/metrics/{condition}/{video_name}_metrics.csv` with columns: `label`, `area`, `mean_intensity`, `eccentricity`, `dendritic_length`, `video`, `frame`, `condition`.
+
+All the ouputs are saved in `../results/morph_plots`
 
 ## Dependencies
 See `requirements.txt`. Key libraries:
