@@ -2,6 +2,7 @@
 /Osteocytes culture/data/processed/*
 /Osteocytes culture/results/figures/*
 /Osteocytes culture/results/metrics/*
+/Osteocytes culture/results/morph_plots/*
 .DS_Store
 
 /.quarto/
