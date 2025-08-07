@@ -81,7 +81,8 @@ def apply_edge_filters(image: np.ndarray, sigma: float = 1.0) -> tuple[np.ndarra
     
     return combined, weights
 
-def segment_cells(image: np.ndarray, min_area: int = 50, use_percentile: bool = False, percentile: float = 85,
+# Check different percentiles
+def segment_cells(image: np.ndarray, min_area: int = 50, use_percentile: bool = False, percentile: float = 94,
                  crop: tuple = None, use_adaptive: bool = False, refine: bool = False, beta: float = 1000) -> tuple:
     """Segment osteocyte cells using contour-based approach with noise reduction.
 
@@ -93,7 +94,7 @@ def segment_cells(image: np.ndarray, min_area: int = 50, use_percentile: bool = 
         image (np.ndarray): Preprocessed 2D grayscale image.
         min_area (int): Min object area (default: 50, tuned to filter noise in osteocytes).
         use_percentile (bool): Use percentile thresholding (default: False, Otsu).
-        percentile (float): Percentile for thresholding (default: 85, stricter for noise).
+        percentile (float): Percentile for thresholding (default: 94, stricter for noise).
         crop (tuple): Crop region (y1, y2, x1, x2) or None.
         use_adaptive (bool): Use adaptive thresholding for variable lighting (default: False).
         refine (bool): Apply random walker refinement (default: False).
