@@ -7,7 +7,7 @@ from skimage.filters import sobel, scharr, prewitt, roberts, farid, laplace
 import argparse
 import logging
 import numpy as np
-
+from scipy import ndimage
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -137,7 +137,39 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                     
                     # Analysis
                     cell_metrics = analyze_cells(labeled, filtered)
-                    dendrite_metrics = analyze_dendrites(labeled > 0, index=cell_metrics.index)
+                    print("Analyzing dendrites")
+                    import skimage
+                    labeled,_,_ = skimage.segmentation.relabel_sequential(labeled)
+                    print(np.unique(labeled))
+                    print(np.bincount(labeled.ravel()))
+                    print(cell_metrics.index)
+                    
+                    cell_slices = ndimage.find_objects(labeled)
+                    print ("numcells",percentile, len(cell_slices))
+
+                    for i,s in enumerate(cell_slices):
+                        view = labeled[s]
+                        c = view == i+1
+                        if np.any(np.array(c.shape)>100):
+                            continue
+                        else:
+                            skeleton = skimage.morphology.skeletonize(c)
+                          
+                            # import matplotlib.pyplot as plt
+                            
+                            # fig, ax = plt.subplots()
+                            # ax.matshow(combined[s], cmap="Greys_r")
+                            # ax.matshow(c, cmap="Oranges",alpha=0.5)
+                            # ax.matshow(skeleton, cmap="bone_r", alpha=0.1)
+                            # plt.show()
+
+                        if i>30:
+                            break
+                  
+                    # dendrite_metrics = analyze_dendrites(labeled > 0, index=cell_metrics.index)
+
+                    
+
                     cell_metrics['video'] = video_path.stem
                     cell_metrics['frame'] = frame_idx
                     cell_metrics['condition'] = condition
