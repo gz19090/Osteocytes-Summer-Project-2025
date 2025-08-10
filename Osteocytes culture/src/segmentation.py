@@ -8,7 +8,6 @@ from skimage.draw import polygon
 from sklearn.linear_model import LinearRegression
 from skimage.filters import threshold_otsu, threshold_local
 from skimage.util import invert
-from skimage.segmentation import random_walker
 from skimage.measure import regionprops
 import logging
 
@@ -168,82 +167,3 @@ def segment_cells(image: np.ndarray, min_area: int = 50, use_percentile: bool = 
         logger.debug(f"After refinement: {num_cells} cells")
 
     return cleaned, combined, contours
-
-def segment_cells_cellpose(image: np.ndarray) -> np.ndarray:
-    """Segment cells using Cellpose 3.0.9 (optional, disabled).
-
-    Converts to float32, applies Scharr filter, runs Cellpose on MPS/CPU.
-    Disabled due to M4 Mac compatibility issues.
-
-    Args:
-        image (np.ndarray): Input 2D grayscale image.
-
-    Returns:
-        np.ndarray: Labeled segmentation mask.
-
-    Raises:
-        ImportError: If Cellpose is not installed.
-        ValueError: If image is invalid.
-    """
-    if not CELLPOSE_AVAILABLE:
-        raise ImportError("Cellpose is not installed. Run 'pip install cellpose'.")
-    if not isinstance(image, np.ndarray) or image.ndim != 2 or image.size == 0:
-        raise ValueError("Input must be a non-empty 2D NumPy array.")
-
-    image = image.astype(np.float32)
-    try:
-        device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-        model = models.CellposeModel(gpu=(device.type == "mps"), device=device)
-        masks, _, _, _ = model.eval([scharr(image)], diameter=None, channels=[0, 0])
-    except Exception as e:
-        logger.warning(f"MPS failed: {e}. Falling back to CPU.")
-        device = torch.device('cpu')
-        model = models.CellposeModel(gpu=False, device=device)
-        masks, _, _, _ = model.eval([scharr(image)], diameter=None, channels=[0, 0])
-    return masks[0]
-
-def refine_with_random_walker(image: np.ndarray, labeled: np.ndarray, beta: float = 1000) -> np.ndarray:
-    """Refine segmentation using random walker for smoother boundaries.
-
-    Creates markers from centroids and background, runs random walker to refine based on intensity.
-    Uses 'cg' mode for faster computation.
-
-    Args:
-        image (np.ndarray): Input 2D grayscale image (inverted).
-        labeled (np.ndarray): Initial labeled mask.
-        beta (float): Stiffness parameter (default: 1000, tuned for osteocytes).
-
-    Returns:
-        np.ndarray: Refined probability map for cell class.
-
-    Raises:
-        ValueError: If inputs are not 2D or empty.
-
-    Reference: Random walker based on Felzenszwalb & Huttenlocher, 2004.
-    """
-    if not isinstance(image, np.ndarray) or image.ndim != 2 or image.size == 0:
-        raise ValueError("Image must be a non-empty 2D NumPy array.")
-    if not isinstance(labeled, np.ndarray) or labeled.ndim != 2 or labeled.size == 0:
-        raise ValueError("Labeled mask must be a non-empty 2D NumPy array.")
-
-    regions = regionprops(labeled)
-    if not regions:
-        logger.warning("No regions in labeled mask for refinement")
-        raise ValueError("No regions in labeled mask")
-
-    centres_img = np.zeros_like(labeled)
-    for i, region in enumerate(regions, 1):
-        y, x = region.centroid
-        cy, cx = int(round(y)), int(round(x))
-        if 0 <= cy < centres_img.shape[0] and 0 <= cx < centres_img.shape[1]:
-            centres_img[cy, cx] = i
-
-    confident_cell = centres_img > 0
-    confident_bkg = labeled == 0
-    markers = np.zeros_like(labeled)
-    markers[confident_bkg] = 1
-    markers[confident_cell] = centres_img[confident_cell]
-
-    pb = random_walker(image, markers, beta=beta, mode='cg', return_full_prob=True)
-    logger.debug(f"Random walker probability range: {pb[1].min():.2f}, {pb[1].max():.2f}")
-    return pb[1]
