@@ -8,29 +8,27 @@ from skimage.draw import polygon
 from sklearn.linear_model import LinearRegression
 from skimage.filters import threshold_otsu, threshold_local
 from skimage.util import invert
-from skimage.measure import regionprops
+from skimage.measure import label
 import logging
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 def apply_edge_filters(image: np.ndarray, sigma: float = 1.0) -> tuple[np.ndarray, list]:
+
     """Apply linear combination of edge filters with noise reduction.
 
     Applies multiple edge detection filters, combines them via linear regression, and normalizes output.
-    Pre-filters image with Gaussian blur (sigma=1.0) to reduce noise. Validates inputs and logs weights.
-
+    
     Args:
         image (np.ndarray): Input 2D grayscale image.
-        sigma (float): Sigma for Gaussian pre-filtering (default: 1.0, tuned to reduce noise).
+        sigma (float): Sigma for Gaussian pre-filtering (default: 1.0).
 
     Returns:
         tuple: (Combined edge-filtered image, weights for edge filters).
-
+    
     Raises:
         ValueError: If image is not 2D or empty.
-
-    Note: Gaussian pre-filter reduces noise amplification in edge detection for osteocyte images.
     """
     if not isinstance(image, np.ndarray) or image.ndim != 2 or image.size == 0:
         logger.error(f"Invalid input image shape: {image.shape if isinstance(image, np.ndarray) else type(image)}")
@@ -53,60 +51,47 @@ def apply_edge_filters(image: np.ndarray, sigma: float = 1.0) -> tuple[np.ndarra
         except Exception as e:
             logger.error(f"Error applying filter {f.__name__}: {e}")
             raise
-
     try:
         X = np.stack(filtered_imgs, axis=1)
         logger.debug(f"Stacked filtered images shape: {X.shape}")
     except Exception as e:
         logger.error(f"Error stacking filtered images: {e}")
         raise
-
     y = image.ravel()
     if len(y) != X.shape[0]:
         logger.error(f"Shape mismatch: y length {len(y)}, X rows {X.shape[0]}")
         raise ValueError("Shape mismatch")
-
     reg = LinearRegression(fit_intercept=False)
     reg.fit(X, y)
     weights = reg.coef_
     logger.info(f"Edge filter weights: {np.round(weights, 3)}")
-
     combined = np.sum([w * f(image) for w, f in zip(weights, edge_filters)], axis=0)
     min_val, max_val = combined.min(), combined.max()
     if max_val > min_val:
         combined = (combined - min_val) / (max_val - min_val)
     else:
         logger.warning("Combined image has no range. Returning unnormalized.")
-    
     return combined, weights
 
-# Check different percentiles
 def segment_cells(image: np.ndarray, min_area: int = 50, use_percentile: bool = False, percentile: float = 94,
                  crop: tuple = None, use_adaptive: bool = False, refine: bool = False, beta: float = 1000) -> tuple:
     """Segment osteocyte cells using contour-based approach with noise reduction.
 
-    Inverts image, applies edge filters, thresholds (percentile, Otsu, or adaptive), finds contours,
-    fills them, applies morphological closing, and filters small objects. Optional random walker
-    refinement reduces noise. Validates inputs and cell count.
-
     Args:
         image (np.ndarray): Preprocessed 2D grayscale image.
-        min_area (int): Min object area (default: 50, tuned to filter noise in osteocytes).
-        use_percentile (bool): Use percentile thresholding (default: False, Otsu).
-        percentile (float): Percentile for thresholding (default: 94, stricter for noise).
+        min_area (int): Min object area (default: 50).
+        use_percentile (bool): Use percentile thresholding (default: False).
+        percentile (float): Percentile for thresholding (default: 94).
         crop (tuple): Crop region (y1, y2, x1, x2) or None.
-        use_adaptive (bool): Use adaptive thresholding for variable lighting (default: False).
+        use_adaptive (bool): Use adaptive thresholding (default: False).
         refine (bool): Apply random walker refinement (default: False).
-        beta (float): Random walker stiffness (default: 1000, smoother boundaries).
+        beta (float): Random walker stiffness (default: 1000).
 
     Returns:
         tuple: (Labeled segmentation mask, combined edge image, contours).
 
     Raises:
         ValueError: If image is not 2D, empty, or no cells detected.
-
-    Note: Closing (disk radius=3) and min_area=50 reduce noise; percentile=85 tuned for mutant videos.
-    Reference: Inspired by scikit-image segmentation workflows for biological imaging.
     """
     if not isinstance(image, np.ndarray) or image.ndim != 2 or image.size == 0:
         logger.error(f"Invalid image shape: {image.shape if isinstance(image, np.ndarray) else type(image)}")
@@ -129,13 +114,13 @@ def segment_cells(image: np.ndarray, min_area: int = 50, use_percentile: bool = 
         thresh = np.percentile(combined, percentile) if use_percentile else threshold_otsu(combined)
         binary = combined > thresh
     logger.debug(f"Threshold: {thresh if not use_adaptive else 'adaptive'} (use_percentile={use_percentile})")
-
+    
     contours = find_contours(binary, level=0.5)
     logger.debug(f"Found {len(contours)} contours")
     if len(contours) < 1:
         logger.warning("No contours detected. Check thresholding parameters.")
         raise ValueError("No contours detected")
-
+    
     segmentation_mask = np.zeros(combined.shape, dtype=np.uint16)
     current_label = 1
     for contour in contours:
@@ -159,10 +144,11 @@ def segment_cells(image: np.ndarray, min_area: int = 50, use_percentile: bool = 
         raise ValueError("No cells detected")
 
     if refine:
+        from skimage.segmentation import random_walker
         logger.debug("Applying random walker refinement")
-        prob_map = refine_with_random_walker(image, cleaned, beta=beta)
-        cleaned = (prob_map > 0.5).astype(np.uint16) * cleaned  # Threshold probability map
-        cleaned = label(cleaned)  # Relabel after refinement
+        prob_map = random_walker(image, cleaned, beta=beta, mode='cg_mg')
+        cleaned = (prob_map > 0.5).astype(np.uint16) * cleaned # Threshold probability map
+        cleaned = label(cleaned)
         num_cells = len(np.unique(cleaned)) - 1
         logger.debug(f"After refinement: {num_cells} cells")
 
