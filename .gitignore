@@ -4,6 +4,8 @@
 /Osteocytes culture/results/metrics/*
 /Osteocytes culture/results/debug/*
 /Osteocytes culture/results/morph_plots/*
+/Osteocytes culture/tests*
+/Osteocytes culture/src/__pycache__*
 .DS_Store
 
 /.quarto/
