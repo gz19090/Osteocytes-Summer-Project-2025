@@ -1,5 +1,5 @@
 # Osteocyte 2D Cell Culture Analysis
-This project analyzes videos of 2D osteocyte cell cultures to segment and quantify cells and dendritic processes using parabolic FFT filtering and contour-based segmentation. It processes videos in `wildtype` and `mutant` conditions, generating metrics (cell area, intensity, eccentricity, dendritic length) and visualizations (edge filter plots, contour overlays, segmentation masks, histograms, skeleton overlays) for user-specified frames.
+This project analyzes videos of 2D osteocyte cell cultures to segment and quantify cells and dendritic processes using parabolic FFT filtering and contour-based segmentation. It processes videos in `wildtype` and `mutant` conditions, generating metrics (cell area, intensity, eccentricity, dendrite count) and visualizations (edge filter plots, contour overlays, segmentation masks, histograms, skeleton overlays) for user-specified frames.
 
 ## Project Structure
 ```
@@ -113,7 +113,7 @@ Osteocytes culture/
 
 ## Scripts
 ### main_workflow.py
-Processes all videos in `data/raw/wildtype/` and `data/raw/mutant/`, applying background correction, Fourier filtering, edge detection, and contour-based segmentation. Generates metrics (cell area, intensity, eccentricity, dendritic length) and visualizations (edge filters, contours, segmentation masks, histograms, skeleton overlays) for each frame.
+Processes all videos in `data/raw/wildtype/` and `data/raw/mutant/`, applying background correction, Fourier filtering, edge detection, and contour-based segmentation. Generates metrics (cell area, intensity, eccentricity, dendrite count) and visualizations (edge filters, contours, segmentation masks, histograms, skeleton overlays) for each frame.
 
 **Usage**:
 ```bash
@@ -133,7 +133,7 @@ python scripts/main_workflow.py
 
 **Outputs**:
 - Processed images: `data/processed/<condition>/<video_name>/frame_XXXX/`
-- Visualizations: `results/figures/<condition>/<video_name>/frame_XXXX/` (includes `skeletons/` subfolder for skeleton overlays)
+- Visualizations: results/figures/<condition>/<video_name>/frame_XXXX/ (includes `skeletons/` subfolder for overlays comparing full skeletons vs dendrite skeletons used for counting).
 - Metrics: `results/metrics/<condition>/<video_name>_metrics.csv`
 
 ### analyze_percentiles.py
@@ -205,5 +205,6 @@ See `requirements.txt`. Key libraries:
 ## Notes
 - Videos must be in MP4 format and placed in `data/raw/wildtype/` or `data/raw/mutant/`.
 - Adjust `min_area` in `segment_cells` (in `src/segmentation.py`) if too few cells are detected (e.g., `min_area=5`).
-- The default percentile in `main_workflow.py` is 90, based on initial analysis. Run `analyze_percentiles.py` to confirm or select a better value.
+- The default percentile in `main_workflow.py` is 94, based on initial analysis. Run `analyze_percentiles.py` to confirm or select a better value.
+- dendrite_count is computed from protrusion skeletons: if a skeleton has fewer than two branches, it is considered non-dendritic (0).
 - For performance with many frames, set a smaller `max_frames` (e.g., 10).
