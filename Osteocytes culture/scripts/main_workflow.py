@@ -1,5 +1,20 @@
 # main_workflow.py 
 
+"""
+main_workflow.py
+----------------
+This file orchestrates the processing pipeline for osteocyte cell video analysis in the osteocyte culture project.
+It coordinates loading and preprocessing of video frames, segmenting cells, calculating morphological metrics
+(e.g., area, dendrite count), and generating visualizations for wildtype and mutant videos. The pipeline supports
+configurable parameters for segmentation and cropping, producing metrics and figures saved to organized directories.
+Key tasks include:
+- Loading videos and preprocessing frames (grayscale, noise reduction, background correction).
+- Segmenting cells using edge detection and contour filling.
+- Analyzing cell metrics and dendrite counts.
+- Creating visualizations (e.g., edge filters, segmentation, skeleton overlays, histograms).
+Used to process videos, generate results for analysis, and validate cell morphology differences.
+"""
+
 import sys
 from pathlib import Path
 import pandas as pd
@@ -8,23 +23,24 @@ import logging
 import numpy as np
 from skimage.segmentation import relabel_sequential
 
-# Set up logging
+# Set up logging to track progress and errors
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Adjust the path to the root of the project
+# Set the project root directory and add it to the Python path
 project_root = Path('/Users/diana/Desktop/Osteocytes-Summer-Project-2025/Osteocytes culture')
 sys.path.append(str(project_root))
 logger.info(f"Script path: {Path(__file__).resolve()}")
 logger.info(f"Project root: {project_root}")
 logger.info(f"sys.path: {sys.path}")
 
-# Verify src directory exists
+# Check if the src directory exists
 src_dir = project_root / 'src'
 if not src_dir.exists():
     logger.error(f"src directory not found at {src_dir}. Please verify project structure.")
     raise FileNotFoundError(f"src directory not found at {src_dir}")
 
+# Import functions from other modules
 from src.image_utils import load_video, correct_background, apply_fourier_filter, save_image
 from src.segmentation import apply_edge_filters, segment_cells
 from src.analysis import analyze_cells, analyze_dendrite_count
@@ -32,17 +48,20 @@ from src.visualization import plot_edge_filters, plot_combined_image, plot_conto
 
 def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = False, percentile: float = 94.0,
          crop: tuple = None, num_wildtype: int = None, num_mutant: int = None):
-    """Process videos in wildtype and mutant subfolders, with optional parameters.
+    """Run the full pipeline to process osteocyte videos and generate analysis results.
+    This function loads videos, preprocesses frames, segments cells, calculates metrics, and creates visualizations
+    for wildtype and mutant videos, saving results to organized folders.
+    
     Args:
-        max_frames (int, optional): Maximum number of frames to process per video.
-        min_area (int): Minimum area for segmented objects.
-        use_percentile (bool): Use percentile thresholding instead of Otsu.
-        percentile (float): Percentile for thresholding if use_percentile=True.
-        crop (tuple, optional): Crop region (y1, y2, x1, x2) or None.
-        num_wildtype (int, optional): Number of wildtype videos to process.
-        num_mutant (int, optional): Number of mutant videos to process.
+        max_frames (int, optional): Maximum number of frames to process per video (None prompts user).
+        min_area (int): Minimum cell area to keep during segmentation (default: 10 pixels).
+        use_percentile (bool): Use percentile thresholding instead of Otsu (default: False).
+        percentile (float): Percentile value for thresholding if use_percentile=True (default: 94.0).
+        crop (tuple, optional): Region to crop (y1, y2, x1, x2) or None.
+        num_wildtype (int, optional): Number of wildtype videos to process (None for all).
+        num_mutant (int, optional): Number of mutant videos to process (None for all).
     """
-    # If max_frames not provided, prompt user
+    # Prompt user for max_frames if not provided
     if max_frames is None:
         try:
             response = input("Enter number of frames to process (e.g., 10, or 'all' for all frames): ").strip().lower()
@@ -50,15 +69,15 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
         except ValueError as e:
             logger.error(f"Invalid input for max_frames: {e}. Defaulting to all frames.")
             max_frames = 0
-
-    # Log segmentation parameters
+    
+    # Log the parameters used for segmentation
     logger.info(f"Segmentation parameters: min_area={min_area}, use_percentile={use_percentile}, percentile={percentile}")
     if crop:
         logger.info(f"Crop region: {crop}")
     else:
         logger.info("No cropping applied.")
-
-    # Paths
+    
+    # Set up directories for data, processed images, figures, and metrics
     data_dir = Path('data/raw')
     output_dir = Path('data/processed')
     results_dir = Path('results/figures')
@@ -66,22 +85,23 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
     output_dir.mkdir(exist_ok=True)
     results_dir.mkdir(exist_ok=True)
     metrics_dir.mkdir(exist_ok=True)
-
-    # Process videos in wildtype and mutant subfolders
+    
+    # Process videos in wildtype and mutant folders
     for condition_dir in [data_dir / 'wildtype', data_dir / 'mutant']:
         if not condition_dir.exists():
             logger.warning(f"Directory {condition_dir} not found. Skipping.")
             continue
-
-        condition = condition_dir.name
+        
+        condition = condition_dir.name  # 'wildtype' or 'mutant'
+        # Create condition-specific output folders
         condition_output_dir = output_dir / condition
         condition_results_dir = results_dir / condition
         condition_metrics_dir = metrics_dir / condition
         condition_output_dir.mkdir(exist_ok=True)
         condition_results_dir.mkdir(exist_ok=True)
         condition_metrics_dir.mkdir(exist_ok=True)
-
-        # Get list of videos and limit based on num_wildtype or num_mutant
+        
+        # Get list of video files and limit based on num_wildtype or num_mutant
         video_paths = sorted(condition_dir.glob('*.mp4'))
         if condition == 'wildtype' and num_wildtype is not None:
             video_paths = video_paths[:num_wildtype]
@@ -89,64 +109,73 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
         elif condition == 'mutant' and num_mutant is not None:
             video_paths = video_paths[:num_mutant]
             logger.info(f"Limiting to first {num_mutant} mutant videos.")
-
+        
+        # Process each video
         for video_path in video_paths:
             logger.info(f"Processing video: {video_path}")
-            # Create video-specific subfolders
+            
+            # Create video-specific folders
             video_name = video_path.stem
             video_output_dir = condition_output_dir / video_name
             video_results_dir = condition_results_dir / video_name
             video_output_dir.mkdir(exist_ok=True)
             video_results_dir.mkdir(exist_ok=True)
-
-            # Load and preprocess video
+            
+            # Load and preprocess the video
             try:
                 frames = load_video(str(video_path))
             except Exception as e:
                 logger.error(f"Error loading {video_path}: {e}. Skipping.")
                 continue
-
-            # Limit frames if specified
+            
+            # Limit the number of frames to process
             frames_to_process = frames if max_frames == 0 else frames[:max_frames]
-
-            # Process each frame
+            
+            # Store metrics for all frames
             metrics = []
+            
+            # Process each frame
             for frame_idx, frame in enumerate(frames_to_process):
                 logger.info(f"Processing frame {frame_idx} of {video_path.stem} ({condition})")
                 try:
-                    # Preprocessing
+                    # Preprocess the frame (correct lighting and filter noise)
                     corrected = correct_background(frame)
                     filtered = apply_fourier_filter(corrected)
                     
-                    # Process full image
+                    # Apply edge detection and segment cells
                     combined, weights = apply_edge_filters(filtered)
                     labeled, _, contours = segment_cells(
                         filtered, min_area=min_area, use_percentile=use_percentile, percentile=percentile, crop=None)
-                    labeled, _, _ = relabel_sequential(labeled)
+                    labeled, _, _ = relabel_sequential(labeled)  # Ensure sequential cell IDs
+                    
+                    # Calculate cell metrics (e.g., area, dendrite count)
                     cell_metrics = analyze_cells(labeled, filtered)
                     
-                    # Create frame-specific subfolders for images and figures
+                    # Create frame-specific folders
                     frame_dir = video_output_dir / f'frame_{frame_idx:04d}'
                     frame_results_dir = video_results_dir / f'frame_{frame_idx:04d}'
                     skeleton_dir = frame_results_dir / 'skeletons'
                     frame_dir.mkdir(exist_ok=True)
                     frame_results_dir.mkdir(exist_ok=True)
                     skeleton_dir.mkdir(exist_ok=True)
+                    
+                    # Count dendrites for each cell
                     dendrite_metrics = analyze_dendrite_count(labeled, index=cell_metrics.index, output_dir=str(skeleton_dir))
-                    # Rename 'label' to 'cell_id' and add metadata
+                    
+                    # Add metadata to cell metrics
                     cell_metrics = cell_metrics.rename(columns={'label': 'cell_id'})
                     cell_metrics['frame_idx'] = frame_idx
                     cell_metrics['condition'] = condition
                     cell_metrics['video_name'] = video_path.stem
                     cell_metrics['dendrite_count'] = dendrite_metrics['dendrite_count'].values
-                    # Define the flag FROM counts (consistency guaranteed)
-                    cell_metrics['is_dendritic'] = cell_metrics['dendrite_count'] > 0
-                    metrics.append(cell_metrics)
-                    # Plot skeleton overlays
-                    plot_skeleton_overlays(labeled, combined, cell_metrics, str(skeleton_dir), image_original=filtered)
-
+                    cell_metrics['is_dendritic'] = cell_metrics['dendrite_count'] > 0  # Flag cells with dendrites
                     
-                    # Process cropped image (if specified)
+                    metrics.append(cell_metrics)
+                    
+                    # Create skeleton visualizations
+                    plot_skeleton_overlays(labeled, combined, cell_metrics, str(skeleton_dir), image_original=filtered)
+                    
+                    # Process cropped region if specified
                     if crop:
                         y1, y2, x1, x2 = crop
                         if y1 < y2 <= filtered.shape[0] and x1 < x2 <= filtered.shape[1]:
@@ -158,7 +187,8 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                             cell_metrics_cropped = analyze_cells(labeled_cropped, cropped)
                             dendrite_metrics_cropped = analyze_dendrite_count(
                                 labeled_cropped, index=cell_metrics_cropped.index, output_dir=str(skeleton_dir))
-                            # Rename columns for cropped metrics
+                            
+                            # Add metadata to cropped metrics
                             cell_metrics_cropped = cell_metrics_cropped.rename(columns={'label': 'cell_id'})
                             cell_metrics_cropped['frame_idx'] = frame_idx
                             cell_metrics_cropped['condition'] = condition
@@ -166,18 +196,19 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                             cell_metrics_cropped['dendrite_count'] = dendrite_metrics_cropped['dendrite_count']
                             cell_metrics_cropped['is_dendritic'] = cell_metrics_cropped['dendrite_count'] > 0
                             metrics.append(cell_metrics_cropped)
-                            # Plot cropped skeleton overlays
+                            
+                            # Create skeleton visualizations for cropped region
                             plot_skeleton_overlays(labeled_cropped, combined_cropped, cell_metrics_cropped, str(skeleton_dir), image_original=cropped)
-
                         else:
                             logger.warning(f"Invalid crop {crop} for frame {frame_idx}. Skipping cropped processing.")
                     
-                    # Save outputs
-                    frame_results_dir.mkdir(exist_ok=True)
+                    # Save processed images
                     frame_prefix = f'{condition}_{video_path.stem}_frame_{frame_idx:04d}'
                     save_image(filtered, str(frame_dir / f'{frame_prefix}_filtered.tif'))
                     save_image(combined, str(frame_dir / f'{frame_prefix}_combined.tif'))
                     save_image(labeled, str(frame_dir / f'{frame_prefix}_labeled.tif'))
+                    
+                    # Create and save visualizations
                     plot_edge_filters(filtered, str(frame_results_dir / f'{frame_prefix}_edge_filters.png'))
                     plot_combined_image(filtered, combined, weights, str(frame_results_dir / f'{frame_prefix}_combined.png'))
                     plot_contours(combined, contours, str(frame_results_dir / f'{frame_prefix}_contours.png'))
@@ -186,7 +217,8 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                         filtered, cell_metrics['area'].tolist(), cell_metrics['dendrite_count'].tolist(),
                         cell_metrics['eccentricity'].tolist(), cell_metrics['solidity'].tolist(),
                         str(frame_results_dir / f'{frame_prefix}_histograms.png'))
-
+                    
+                    # Save cropped images and visualizations if applicable
                     if crop and 'cell_metrics_cropped' in locals():
                         save_image(cropped, str(frame_dir / f'{frame_prefix}_cropped.tif'))
                         save_image(combined_cropped, str(frame_dir / f'{frame_prefix}_combined_cropped.tif'))
@@ -200,15 +232,15 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                                          str(frame_results_dir / f'{frame_prefix}_segmentation_cropped.png'))
                         plot_histograms(
                             cropped, cell_metrics_cropped['area'].tolist(),
-                            cell_metrics_cropped['dendritic_count'].tolist(),
+                            cell_metrics_cropped['dendrite_count'].tolist(),
                             cell_metrics_cropped['eccentricity'].tolist(),
                             cell_metrics_cropped['solidity'].tolist(),
                             str(frame_results_dir / f'{frame_prefix}_histograms_cropped.png'))
                 except Exception as e:
                     logger.error(f"Error processing frame {frame_idx} of {video_path}: {e}")
                     continue
-
-            # Save metrics for this video
+            
+            # Save all metrics for the video
             if metrics:
                 try:
                     metrics_df = pd.concat(metrics, ignore_index=True)
@@ -219,10 +251,11 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                     logger.error(f"Error saving metrics for {video_path}: {e}")
             else:
                 logger.warning(f"No metrics generated for {video_path}. Check video frames and processing steps.")
-
+    
     logger.info("Processing complete.")
 
 if __name__ == '__main__':
+    # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Process osteocyte videos with optional parameters.")
     parser.add_argument('--max-frames', type=int, default=None,
                         help='Maximum number of frames to process per video (default: None, prompts user)')
@@ -239,5 +272,7 @@ if __name__ == '__main__':
     parser.add_argument('--num-mutant', type=int, default=None,
                         help='Number of mutant videos to process (default: None, all)')
     args = parser.parse_args()
+    
+    # Run the main function with command-line arguments
     main(max_frames=args.max_frames, min_area=args.min_area, use_percentile=args.use_percentile,
          percentile=args.percentile, crop=args.crop, num_wildtype=args.num_wildtype, num_mutant=args.num_mutant)
