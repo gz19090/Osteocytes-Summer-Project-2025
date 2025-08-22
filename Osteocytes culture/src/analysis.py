@@ -2,8 +2,8 @@
 
 """
 analysis.py
-----------------
-This file contains functions for analyzing osteocyte cell images in the osteocyte culture project.
+-----------
+This module contains functions for analyzing osteocyte cell images in the osteocyte culture project.
 It processes segmented cell masks to compute morphological metrics (e.g., area, perimeter, solidity)
 and counts dendrites by skeletonizing cell protrusions. The functions are designed to work with 2D
 grayscale images and labeled masks, producing metrics for statistical analysis and visualization.

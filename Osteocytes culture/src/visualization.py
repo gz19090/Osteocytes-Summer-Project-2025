@@ -3,7 +3,7 @@
 """
 visualization.py
 ----------------
-This module provides functions to visualize osteocyte cell image analysis results for the osteocyte culture project.
+This file provides functions to visualize osteocyte cell image analysis results for the osteocyte culture project.
 It generates plots to debug and validate cell segmentation, edge detection, and dendrite counting, including edge filter outputs,
 segmentation overlays, histograms of cell metrics, and skeleton overlays for full and dendritic structures.
 Key functions include:
