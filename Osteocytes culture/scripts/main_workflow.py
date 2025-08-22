@@ -6,6 +6,7 @@ import pandas as pd
 import argparse
 import logging
 import numpy as np
+from skimage.segmentation import relabel_sequential
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -26,7 +27,7 @@ if not src_dir.exists():
 
 from src.image_utils import load_video, correct_background, apply_fourier_filter, save_image
 from src.segmentation import apply_edge_filters, segment_cells
-from src.analysis import analyze_cells, analyze_dendrites
+from src.analysis import analyze_cells, analyze_dendrite_count
 from src.visualization import plot_edge_filters, plot_combined_image, plot_contours, plot_segmentation, plot_histograms, plot_skeleton_overlays
 
 def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = False, percentile: float = 94.0,
@@ -121,6 +122,7 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                     combined, weights = apply_edge_filters(filtered)
                     labeled, _, contours = segment_cells(
                         filtered, min_area=min_area, use_percentile=use_percentile, percentile=percentile, crop=None)
+                    labeled, _, _ = relabel_sequential(labeled)
                     cell_metrics = analyze_cells(labeled, filtered)
                     
                     # Create frame-specific subfolders for images and figures
@@ -130,16 +132,19 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                     frame_dir.mkdir(exist_ok=True)
                     frame_results_dir.mkdir(exist_ok=True)
                     skeleton_dir.mkdir(exist_ok=True)
-                    dendrite_metrics = analyze_dendrites(labeled, index=cell_metrics.index, output_dir=str(skeleton_dir))
-                    # Rename 'label' to 'cell_id' and 'frame' to 'frame_idx' for consistency with notebook
+                    dendrite_metrics = analyze_dendrite_count(labeled, index=cell_metrics.index, output_dir=str(skeleton_dir))
+                    # Rename 'label' to 'cell_id' and add metadata
                     cell_metrics = cell_metrics.rename(columns={'label': 'cell_id'})
-                    cell_metrics['frame_idx'] = frame_idx  
+                    cell_metrics['frame_idx'] = frame_idx
                     cell_metrics['condition'] = condition
-                    cell_metrics['video_name'] = video_path.stem  
-                    cell_metrics['dendritic_length'] = dendrite_metrics['dendritic_length']
+                    cell_metrics['video_name'] = video_path.stem
+                    cell_metrics['dendrite_count'] = dendrite_metrics['dendrite_count'].values
+                    # Define the flag FROM counts (consistency guaranteed)
+                    cell_metrics['is_dendritic'] = cell_metrics['dendrite_count'] > 0
                     metrics.append(cell_metrics)
                     # Plot skeleton overlays
-                    plot_skeleton_overlays(labeled, cell_metrics, str(skeleton_dir), percentile)
+                    plot_skeleton_overlays(labeled, combined, cell_metrics, str(skeleton_dir), image_original=filtered)
+
                     
                     # Process cropped image (if specified)
                     if crop:
@@ -149,18 +154,21 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                             combined_cropped, weights_cropped = apply_edge_filters(cropped)
                             labeled_cropped, _, contours_cropped = segment_cells(
                                 cropped, min_area=min_area, use_percentile=use_percentile, percentile=percentile, crop=None)
+                            labeled_cropped, _, _ = relabel_sequential(labeled_cropped)
                             cell_metrics_cropped = analyze_cells(labeled_cropped, cropped)
-                            dendrite_metrics_cropped = analyze_dendrites(
+                            dendrite_metrics_cropped = analyze_dendrite_count(
                                 labeled_cropped, index=cell_metrics_cropped.index, output_dir=str(skeleton_dir))
                             # Rename columns for cropped metrics
                             cell_metrics_cropped = cell_metrics_cropped.rename(columns={'label': 'cell_id'})
                             cell_metrics_cropped['frame_idx'] = frame_idx
                             cell_metrics_cropped['condition'] = condition
                             cell_metrics_cropped['video_name'] = f'{video_path.stem}_cropped'
-                            cell_metrics_cropped['dendritic_length'] = dendrite_metrics_cropped['dendritic_length']
+                            cell_metrics_cropped['dendrite_count'] = dendrite_metrics_cropped['dendrite_count']
+                            cell_metrics_cropped['is_dendritic'] = cell_metrics_cropped['dendrite_count'] > 0
                             metrics.append(cell_metrics_cropped)
                             # Plot cropped skeleton overlays
-                            plot_skeleton_overlays(labeled_cropped, cell_metrics_cropped, str(skeleton_dir), percentile)
+                            plot_skeleton_overlays(labeled_cropped, combined_cropped, cell_metrics_cropped, str(skeleton_dir), image_original=cropped)
+
                         else:
                             logger.warning(f"Invalid crop {crop} for frame {frame_idx}. Skipping cropped processing.")
                     
@@ -175,9 +183,10 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                     plot_contours(combined, contours, str(frame_results_dir / f'{frame_prefix}_contours.png'))
                     plot_segmentation(filtered, combined, labeled, str(frame_results_dir / f'{frame_prefix}_segmentation.png'))
                     plot_histograms(
-                        filtered, cell_metrics['area'].tolist(), cell_metrics['dendritic_length'].tolist(),
+                        filtered, cell_metrics['area'].tolist(), cell_metrics['dendrite_count'].tolist(),
                         cell_metrics['eccentricity'].tolist(), cell_metrics['solidity'].tolist(),
                         str(frame_results_dir / f'{frame_prefix}_histograms.png'))
+
                     if crop and 'cell_metrics_cropped' in locals():
                         save_image(cropped, str(frame_dir / f'{frame_prefix}_cropped.tif'))
                         save_image(combined_cropped, str(frame_dir / f'{frame_prefix}_combined_cropped.tif'))
@@ -191,7 +200,7 @@ def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = Fals
                                          str(frame_results_dir / f'{frame_prefix}_segmentation_cropped.png'))
                         plot_histograms(
                             cropped, cell_metrics_cropped['area'].tolist(),
-                            cell_metrics_cropped['dendritic_length'].tolist(),
+                            cell_metrics_cropped['dendritic_count'].tolist(),
                             cell_metrics_cropped['eccentricity'].tolist(),
                             cell_metrics_cropped['solidity'].tolist(),
                             str(frame_results_dir / f'{frame_prefix}_histograms_cropped.png'))

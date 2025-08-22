@@ -1,6 +1,7 @@
 # visualization.py
 
 import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -11,6 +12,9 @@ from skimage.measure import regionprops
 from scipy import ndimage
 import skimage.segmentation
 import skimage.morphology
+from skimage.morphology import skeletonize, opening, disk, remove_small_objects
+from skimage.segmentation import relabel_sequential, find_boundaries
+from skimage.measure import find_contours
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -165,55 +169,46 @@ def plot_segmentation(image: np.ndarray, combined: np.ndarray, labeled: np.ndarr
         logger.error(f"Failed to save labeled segmentation to {output_path_labeled}: {e}")
     plt.close()
 
-def plot_histograms(image: np.ndarray, areas: list, dendritic_lengths: list, eccentricities: list, solidities: list, output_path: str, dpi: int = 150):
-    """Plot histograms for intensity and cell metrics using seaborn.
-    Args:
-        image (np.ndarray): Input image for intensity histogram.
-        areas (list): List of cell areas.
-        dendritic_lengths (list): List of dendritic lengths.
-        eccentricities (list): List of eccentricities.
-        solidities (list): List of solidities.
-        output_path (str): Path to save PNG.
-        dpi (int): Resolution (default: 150).
-    """
+def plot_histograms(image: np.ndarray, areas: list, dendrite_counts: list, eccentricities: list, solidities: list, output_path: str, dpi: int = 150):
+    """Plot histograms for intensity and cell metrics (using dendrite COUNT)."""
     if not isinstance(image, np.ndarray) or image.ndim != 2 or image.size == 0:
         raise ValueError("Image must be a non-empty 2D NumPy array.")
-    for name, lst in [('areas', areas), ('dendritic_lengths', dendritic_lengths),
+    for name, lst in [('areas', areas), ('dendrite_counts', dendrite_counts),
                       ('eccentricities', eccentricities), ('solidities', solidities)]:
-        if not lst:
+        if lst is None or len(lst) == 0:
             logger.warning(f"Empty {name} list for {output_path}")
             raise ValueError(f"{name} list is empty")
+
     logger.debug(f"Plotting histograms: {len(areas)} cells, image shape: {image.shape}")
     sns.set_style('whitegrid')
     plt.figure(figsize=(16, 4))
+
+    # Intensity
     plt.subplot(1, 4, 1)
     sns.histplot(image.ravel(), bins=128, kde=True)
     plt.axvline(np.mean(image.ravel()), color='red', linestyle='--', label='Mean')
-    plt.title('Image Intensity')
-    plt.xlabel('Intensity')
-    plt.ylabel('Count')
-    plt.legend()
+    plt.title('Image Intensity'); plt.xlabel('Intensity'); plt.ylabel('Count'); plt.legend()
+
+    # Area
     plt.subplot(1, 4, 2)
     sns.histplot(areas, bins=min(20, len(areas)//2 or 1), kde=True)
     plt.axvline(np.mean(areas), color='red', linestyle='--', label='Mean')
-    plt.title('Cell Area')
-    plt.xlabel('Area (pixels)')
-    plt.ylabel('Count')
-    plt.legend()
+    plt.title('Cell Area'); plt.xlabel('Area (pixels)'); plt.ylabel('Count'); plt.legend()
+
+    # Dendrite COUNT (discrete)
     plt.subplot(1, 4, 3)
-    sns.histplot(dendritic_lengths, bins=min(20, len(dendritic_lengths)//2 or 1), kde=True)
-    plt.axvline(np.mean(dendritic_lengths), color='red', linestyle='--', label='Mean')
-    plt.title('Dendritic Length')
-    plt.xlabel('Length (pixels)')
-    plt.ylabel('Count')
-    plt.legend()
+    dmin, dmax = int(np.min(dendrite_counts)), int(np.max(dendrite_counts))
+    bins = np.arange(dmin, dmax + 2) - 0.5  # integer bins
+    sns.histplot(dendrite_counts, bins=bins, discrete=True)
+    plt.axvline(np.mean(dendrite_counts), color='red', linestyle='--', label='Mean')
+    plt.title('Dendrite Count'); plt.xlabel('# Dendrites'); plt.ylabel('Cells'); plt.legend()
+
+    # Eccentricity
     plt.subplot(1, 4, 4)
     sns.histplot(eccentricities, bins=min(20, len(eccentricities)//2 or 1), kde=True)
     plt.axvline(np.mean(eccentricities), color='red', linestyle='--', label='Mean')
-    plt.title('Eccentricity')
-    plt.xlabel('Eccentricity')
-    plt.ylabel('Count')
-    plt.legend()
+    plt.title('Eccentricity'); plt.xlabel('Eccentricity'); plt.ylabel('Count'); plt.legend()
+
     plt.tight_layout()
     try:
         plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
@@ -222,53 +217,108 @@ def plot_histograms(image: np.ndarray, areas: list, dendritic_lengths: list, ecc
         logger.error(f"Failed to save histograms to {output_path}: {e}")
     plt.close()
 
-def plot_skeleton_overlays(labeled: np.ndarray, cell_metrics: pd.DataFrame, output_dir: str, percentile: float):
-    """Plot skeleton overlays for each cell, showing cell mask and skeleton.
-    Args:
-        labeled (np.ndarray): Labeled segmentation mask.
-        cell_metrics (pd.DataFrame): Cell metrics DataFrame with index for labels.
-        output_dir (str): Directory to save skeleton overlay plots.
-        percentile (float): Percentile used for segmentation (for logging).
+def _protrusion_skeleton(cell_mask: np.ndarray,
+                         soma_frac: float = 0.18,
+                         min_component_size: int = 8) -> np.ndarray:
+    """Skeleton of dendrite-like protrusions only (soma removed by opening)."""
+    cell = cell_mask.astype(bool, copy=False)
+    if cell.sum() == 0:
+        return np.zeros_like(cell, dtype=bool)
+    area = int(cell.sum())
+    equiv_d = 2.0 * np.sqrt(area / np.pi)
+    r = max(2, int(round(soma_frac * equiv_d)))  # adaptive soma radius
+    core = opening(cell, disk(r))
+    protrusions = cell & ~core
+    if protrusions.any():
+        protrusions = remove_small_objects(protrusions, min_size=min_component_size)
+    return skeletonize(protrusions)
+
+def plot_skeleton_overlays(
+    labeled: np.ndarray,
+    image_processed: np.ndarray,  # grayscale background (e.g., 'combined')
+    cell_metrics: pd.DataFrame,
+    output_dir: str,
+    image_original: np.ndarray = None,
+    soma_frac: float = 0.18,
+    min_component_size: int = 8,
+    min_len_px: int = 5,
+    alpha_mask: float = 0.38,
+    # colors
+    fill_color: str = "#FFA726", # orange 
+    outline_color: str = "saddlebrown",
+):
+    """
+    LEFT  : FULL skeleton (light gray) on grayscale background
+    RIGHT : PROTRUSION skeleton (white; counted) on grayscale background
+    Cells are filled and contoured with brown.
     """
     if not isinstance(labeled, np.ndarray) or labeled.ndim != 2 or labeled.size == 0:
-        logger.error(f"Invalid labeled mask shape: {labeled.shape if isinstance(labeled, np.ndarray) else type(labeled)}")
         raise ValueError("Labeled mask must be a non-empty 2D NumPy array.")
-    try:
-        logger.info("Analyzing dendrites for skeleton overlays")
-        # Relabel sequentially to ensure labels start from 1
-        labeled, _, _ = skimage.segmentation.relabel_sequential(labeled)
-        logger.debug(f"Unique labels: {np.unique(labeled)}")
-        logger.debug(f"Label counts: {np.bincount(labeled.ravel())}")
-        logger.debug(f"Cell metrics index: {cell_metrics.index.tolist()}")
-        
-        # Find bounding boxes for each cell
-        cell_slices = ndimage.find_objects(labeled)
-        logger.info(f"Number of cells: {len(cell_slices)}, percentile: {percentile}")
-        
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-        for i, s in enumerate(cell_slices):
-            if s is None:
-                logger.warning(f"No slice found for label {i+1}. Skipping.")
-                continue
-            view = labeled[s]
-            cell_mask = (view == i + 1)
-            if np.any(np.array(cell_mask.shape) > 100):
-                logger.debug(f"Skipping label {i+1} due to slice dimensions {cell_mask.shape} > 100")
-                continue
-            try:
-                # Skeletonize the cell mask
-                skeleton = skimage.morphology.skeletonize(cell_mask)
-                # Plot overlay (only cell mask and skeleton, no combined image)
-                fig, ax = plt.subplots(figsize=(6, 6))
-                ax.matshow(cell_mask, cmap="Oranges", alpha=0.5)
-                ax.matshow(skeleton, cmap="bone_r", alpha=0.1)
-                ax.axis('off')
-                output_path = Path(output_dir) / f"skeleton_overlay_label_{i+1}.png"
-                plt.savefig(output_path, dpi=150, bbox_inches='tight')
-                plt.close(fig)
-                logger.info(f"Saved skeleton overlay for label {i+1} to {output_path}")
-            except Exception as e:
-                logger.error(f"Error plotting skeleton overlay for label {i+1}: {e}")
-                continue
-    except Exception as e:
-        logger.error(f"Error in plot_skeleton_overlays: {e}")
+    if not isinstance(image_processed, np.ndarray) or image_processed.ndim != 2 or image_processed.size == 0:
+        raise ValueError("image_processed must be a non-empty 2D NumPy array.")
+    if 'dendrite_count' not in cell_metrics.columns:
+        raise ValueError("cell_metrics must include 'dendrite_count'.")
+
+    metrics_idx = (cell_metrics['cell_id'].values if 'cell_id' in cell_metrics.columns
+                   else cell_metrics.index.values).astype(int)
+    labeled, _, _ = relabel_sequential(labeled)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    dendrite_map = {int(cid): int(cnt) for cid, cnt in zip(metrics_idx, cell_metrics['dendrite_count'].values)}
+
+    # single-color cmaps (1 -> color; 0 -> transparent via masked arrays)
+    fill_cmap   = ListedColormap([fill_color])
+    outline_cmap = ListedColormap([outline_color])
+    full_cmap   = ListedColormap(['#DCDCDC'])  # light gray
+    prot_cmap   = ListedColormap(['#FFFFFF'])  # white
+
+    cell_slices = ndimage.find_objects(labeled)
+    for i, s in enumerate(cell_slices, start=1):
+        if s is None:
+            continue
+        rsl, csl = s
+        r0, r1 = rsl.start, rsl.stop
+        c0, c1 = csl.start, csl.stop
+        pad = 5
+        r0p = max(0, r0 - pad); r1p = min(labeled.shape[0], r1 + pad)
+        c0p = max(0, c0 - pad); c1p = min(labeled.shape[1], c1 + pad)
+
+        lab_view = labeled[r0p:r1p, c0p:c1p]
+        bg_view  = image_processed[r0p:r1p, c0p:c1p]
+        cell_mask = (lab_view == i)
+
+        # 1‑px skeletons
+        skel_full = skeletonize(cell_mask)
+        skel_prot = _protrusion_skeleton(cell_mask, soma_frac=soma_frac, min_component_size=min_component_size)
+        if skel_prot.sum() < min_len_px:
+            skel_prot[:] = False
+
+        # boundaries + masked arrays
+        outline = find_boundaries(cell_mask, mode='outer')
+        mask_ma = np.ma.masked_where(~cell_mask, cell_mask)
+        outl_ma = np.ma.masked_where(~outline, outline)
+        full_ma = np.ma.masked_where(~skel_full, skel_full)
+        prot_ma = np.ma.masked_where(~skel_prot, skel_prot)
+
+        fig, axes = plt.subplots(1, 2, figsize=(9.5, 4.8))
+        panels = [
+            ("FULL skeleton", full_ma, full_cmap),
+            (f"PROTRUSION skeleton (counted: {dendrite_map.get(i, 0)})", prot_ma, prot_cmap),
+        ]
+
+        for ax, (subtitle, skel_ma, skel_cmap) in zip(axes, panels):
+            ax.imshow(bg_view, cmap="gray", interpolation="nearest")  # original grayscale
+            # filled cell with chosen color
+            ax.imshow(mask_ma, cmap=fill_cmap, alpha=alpha_mask, interpolation="nearest", vmin=0, vmax=1)
+            # crisp colored contour
+            ax.imshow(outl_ma, cmap=outline_cmap, interpolation="nearest", vmin=0, vmax=1)
+            # pixel-exact skeleton overlay
+            ax.imshow(skel_ma, cmap=skel_cmap, interpolation="nearest", vmin=0, vmax=1)
+
+            ax.set_title(f"Cell {i} | {subtitle}")
+            ax.axis("off")
+
+        out_path = Path(output_dir) / f"skeleton_overlay_label_{i}.png"
+        try:
+            plt.savefig(out_path, dpi=180, bbox_inches="tight")
+        finally:
+            plt.close(fig)

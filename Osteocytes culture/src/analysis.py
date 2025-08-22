@@ -3,10 +3,11 @@
 import numpy as np
 import pandas as pd
 from skimage.measure import regionprops_table
-from skimage.morphology import skeletonize
+from skimage.morphology import remove_small_objects, skeletonize, opening, disk
 import logging
 from pathlib import Path
 import imageio.v2 as imageio
+from scipy import ndimage as ndi
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -38,7 +39,6 @@ def analyze_cells(labeled_mask: np.ndarray, image: np.ndarray) -> pd.DataFrame:
         )
         df = pd.DataFrame(props)
         fractal_dimensions = []
-        is_dendritic = []
         form_factors = []
         solidities = []
         compactnesses = []
@@ -53,7 +53,6 @@ def analyze_cells(labeled_mask: np.ndarray, image: np.ndarray) -> pd.DataFrame:
                     form_factors.append(np.nan)
                     solidities.append(np.nan)
                     compactnesses.append(np.nan)
-                    is_dendritic.append(False)
                 else:
                     fd = 2 * np.log(perimeter) / np.log(area)
                     fractal_dimensions.append(fd)
@@ -63,19 +62,16 @@ def analyze_cells(labeled_mask: np.ndarray, image: np.ndarray) -> pd.DataFrame:
                     solidities.append(solidity)
                     compactness = (perimeter ** 2) / (4 * np.pi * area)
                     compactnesses.append(compactness)
-                    is_dendritic.append(solidity < 0.8)
             except Exception as e:
                 logger.warning(f"Metrics failed for label {row['label']}: {e}. Using NaN.")
                 fractal_dimensions.append(np.nan)
                 form_factors.append(np.nan)
                 solidities.append(np.nan)
                 compactnesses.append(np.nan)
-                is_dendritic.append(False)
         df['fractal_dimension'] = fractal_dimensions
         df['form_factor'] = form_factors
         df['solidity'] = solidities
         df['compactness'] = compactnesses
-        df['is_dendritic'] = is_dendritic
         return df
     except Exception as e:
         logger.error(f"Error in analyze_cells: {e}")
@@ -107,36 +103,90 @@ def skeletonise(binary_mask: np.ndarray, output_dir: str = None) -> np.ndarray:
         logger.error(f"Error in skeletonise: {e}")
         raise
 
-def analyze_dendrites(labeled_mask: np.ndarray, index: pd.Index = None, output_dir: str = None) -> pd.DataFrame:
-    """Analyze dendritic processes by computing skeleton length per cell.
-    This function skeletonizes the binary mask of each cell (or the entire mask if no index is provided)
-    to estimate dendritic process length as the sum of skeleton pixels. It uses per-cell masks to avoid overestimation
-    and handles errors by setting length to 0.
-    Args:
-        labeled_mask (np.ndarray): Labeled cell mask (each cell has a unique label).
-        index (pd.Index, optional): Index to align with cell metrics DataFrame (for per-cell analysis).
-        output_dir (str, optional): Directory to save skeleton images (one per cell if index is provided).
-    Returns:
-        pd.DataFrame: Dendritic length for each cell, aligned with the provided index.
+def _protrusion_skeleton(cell_mask: np.ndarray,
+                         soma_frac: float = 0.18,
+                         min_component_size: int = 8) -> np.ndarray:
+    """
+    Build a dendrite-only skeleton by removing the thick soma via morphological opening.
+
+    Steps:
+      1) Estimate an effective soma radius from cell area: r ≈ soma_frac * equiv_diameter.
+      2) opened = opening(cell, disk(r))  -> soma core (thin connections broken).
+      3) protrusions = cell & ~opened     -> thin processes (dendrites).
+      4) Remove tiny specks and skeletonize.
+    """
+    cell = cell_mask.astype(bool, copy=False)
+    if cell.sum() == 0:
+        return np.zeros_like(cell, dtype=bool)
+
+    area = int(cell.sum())
+    # equiv_diameter = diameter of a circle with same area
+    equiv_d = 2.0 * np.sqrt(area / np.pi)
+    r = max(2, int(round(soma_frac * equiv_d)))  # adaptive, ≥2 px
+
+    core = opening(cell, disk(r))
+    protrusions = cell & ~core
+
+    # clean tiny islands in protrusions before skeletonizing
+    protrusions = remove_small_objects(protrusions, min_size=min_component_size)
+
+    skel = skeletonize(protrusions)
+    return skel
+
+def _count_dendrites_from_protrusions(skel: np.ndarray,
+                                      min_len_px: int = 5) -> int:
+    """
+    Count connected skeleton components as dendrites, requiring a minimum pixel length.
+    """
+    skel = skel.astype(bool, copy=False)
+    if skel.sum() < min_len_px:
+        return 0
+
+    # Label connected skeleton components
+    lbl, ncomp = ndi.label(skel, structure=np.ones((3, 3), dtype=int))
+    if ncomp == 0:
+        return 0
+
+    count = 0
+    for cid in range(1, ncomp + 1):
+        comp = (lbl == cid)
+        if comp.sum() >= min_len_px:
+            count += 1
+    return int(count)
+
+
+def analyze_dendrite_count(labeled_mask: np.ndarray,
+                           index: pd.Index = None,
+                           output_dir: str = None,
+                           soma_frac: float = 0.18,
+                           min_component_size: int = 8,
+                           min_len_px: int = 5) -> pd.DataFrame:
+    """
+    Compute dendrite COUNT per cell via morphological-opening-based protrusions.
+
+    - soma_frac: fraction of equivalent diameter to set opening radius (typ. 0.15–0.25).
+    - min_component_size: remove tiny protrusion blobs before skeletonization.
+    - min_len_px: minimal skeleton pixels per protrusion to count as a dendrite.
     """
     try:
         if index is None:
-            skeleton = skeletonise(labeled_mask > 0, output_dir)
-            total_length = np.sum(skeleton)
-            return pd.DataFrame({'dendritic_length': [total_length]})
-        else:
-            dendritic_lengths = []
-            for label in index:
-                try:
-                    cell_mask = (labeled_mask == label).astype(np.uint8)
-                    skeleton_dir = f"{output_dir}/label_{label}" if output_dir else None
-                    skeleton = skeletonise(cell_mask, skeleton_dir)
-                    length = np.sum(skeleton)
-                    dendritic_lengths.append(length)
-                except Exception as e:
-                    logger.warning(f"Dendritic length failed for label {label}: {e}. Using 0.")
-                    dendritic_lengths.append(0)
-            return pd.DataFrame({'dendritic_length': dendritic_lengths}, index=index)
+            # Whole-mask total (rarely needed); treat all foreground as one cell
+            cell = (labeled_mask > 0)
+            skel = _protrusion_skeleton(cell, soma_frac=soma_frac, min_component_size=min_component_size)
+            total = _count_dendrites_from_protrusions(skel, min_len_px=min_len_px)
+            return pd.DataFrame({'dendrite_count': [total]})
+
+        counts = []
+        for lbl in index:
+            try:
+                cell = (labeled_mask == int(lbl))
+                skel = _protrusion_skeleton(cell, soma_frac=soma_frac, min_component_size=min_component_size)
+                cnt = _count_dendrites_from_protrusions(skel, min_len_px=min_len_px)
+                counts.append(cnt)
+            except Exception as e:
+                logger.warning(f"Dendrite count failed for label {lbl}: {e}. Using 0.")
+                counts.append(0)
+        return pd.DataFrame({'dendrite_count': counts}, index=index)
     except Exception as e:
-        logger.error(f"Error in analyze_dendrites: {e}")
-        return pd.DataFrame({'dendritic_length': [0] * (len(index) if index is not None else 1)})
+        logger.error(f"Error in analyze_dendrite_count: {e}")
+        return pd.DataFrame({'dendrite_count': [0] * (len(index) if index is not None else 1)})
