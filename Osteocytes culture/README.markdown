@@ -103,7 +103,7 @@ Osteocytes culture/
 1. Clone the repository:
    ```bash
    git clone https://github.com/gz19090/Osteocytes-Summer-Project-2025.git
-   cd Osteocytes-Summer-Project-2025/2d-cell-cultures/Osteocytes culture
+   cd Osteocytes-Summer-Project-2025/Osteocytes culture
    ```
 2. Install dependencies:
    ```bash
