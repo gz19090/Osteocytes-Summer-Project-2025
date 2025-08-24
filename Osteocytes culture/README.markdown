@@ -1,5 +1,5 @@
 # Osteocyte 2D Cell Culture Analysis
-This project analyzes videos of 2D osteocyte cell cultures to segment and quantify cells and dendritic processes using parabolic FFT filtering and contour-based segmentation. It processes videos in `wildtype` and `mutant` conditions, generating metrics (cell area, intensity, eccentricity, dendrite count) and visualizations (edge filter plots, contour overlays, segmentation masks, histograms, skeleton overlays) for user-specified frames.
+This project analyzes videos of 2D osteocyte cell cultures to segment and quantify cells and dendritic processes using parabolic FFT filtering and contour-based segmentation. It processes videos in `wildtype` and `mutant` conditions, generating metrics (cell area, intensity, eccentricity, dendrite count), per‑frame timing profiles, and visualizations (edge filter plots, contour overlays, segmentation masks, histograms, skeleton overlays) for user-specified frames.
 
 ## Project Structure
 ```
@@ -86,9 +86,11 @@ Osteocytes culture/
 │ ├── metrics/
 │ │ ├── wildtype/
 │ │ │ ├── Confluence_Single movie_30.03.2025_no mask_C4_1_metrics.csv
+│ │ │ ├── Confluence_Single movie_30.03.2025_no mask_C4_1_timings.csv
 │ │ │ ├── ...
 │ │ ├── mutant/
 │ │ │ ├── Confluence_Single movie_30.03.2025_no mask_G5_1_metrics.csv
+│ │ │ ├── Confluence_Single movie_30.03.2025_no mask_G5_1_timings.csv
 │ │ │ ├── ...
 │ ├── morph_plots/
 │ │ ├── correlation_heatmap.png
@@ -136,6 +138,8 @@ python scripts/main_workflow.py
 - Processed images: `data/processed/<condition>/<video_name>/frame_XXXX/`
 - Visualizations: `results/figures/<condition>/<video_name>/frame_XXXX/` (includes `skeletons/` subfolder for overlays comparing full skeletons vs dendrite skeletons used for counting).
 - Metrics: `results/metrics/<condition>/<video_name>_metrics.csv`
+- Records **per‑frame timings** for preprocessing, segmentation, metrics, I/O, visualization, and total runtime. Saves timings to `results/metrics/<condition>/<video_name>_timings.csv`.
+
 
 ### analyze_percentiles.py
 Analyzes cell segmentation across percentiles (80–99) to determine the optimal percentile for thresholding. Generates:
@@ -177,6 +181,7 @@ jupyter notebook notebooks/morphology.ipynb
 ## Outputs
 - Processed images and visualizations: `data/processed/` and `results/figures/`
 - Metrics: `results/metrics/`
+- Timing profiles (per frame): `results/metrics/<condition>/<video_name>_timings.csv`
 - Morphological plots: `results/morph_plots/`
 - Percentile analysis: `results/figures/percentile_analysis/`
 - `percentile_results.csv`: Cell counts per percentile.
@@ -209,3 +214,16 @@ See `requirements.txt`. Key libraries:
 - The default percentile in `main_workflow.py` is 94, based on initial analysis. Run `analyze_percentiles.py` to confirm or select a better value.
 - dendrite_count is computed from protrusion skeletons: if a skeleton has fewer than two branches, it is considered non-dendritic (0).
 - For performance with many frames, set a smaller `max_frames` (e.g., 10) or increase `--subsample-rate` (e.g., 5 for every 5th frame). Parallel processing (4-8 processes) improves runtime efficiency.
+
+### Quick Timing Summary (optional)
+After a run, you can quickly summarize average stage times in terminal (Python one‑liner):
+
+```bash
+python - <<'PY'
+import pandas as pd, glob
+paths = glob.glob('results/metrics/*/*_timings.csv')
+df = pd.concat((pd.read_csv(p) for p in paths), ignore_index=True)
+cols = ['t_preprocess_s','t_segment_s','t_metrics_s','t_io_s','t_visualize_s','t_crop_total_s','t_total_s']
+print(df.groupby('condition')[cols].mean().round(3))
+PY
+```
