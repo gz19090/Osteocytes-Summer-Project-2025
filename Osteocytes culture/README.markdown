@@ -15,6 +15,7 @@ Osteocytes culture/
 │ ├── analyze_percentiles.py # Analyzes cell counts across percentiles and generates comparison figures
 ├── notebooks/
 │ ├── morphology.ipynb # Analysis of morphological features comparing control (wildtype) vs LTBP3-deficient (mutant)
+│ ├── timing_analysis.ipynb # Analysis of the processing time for each stage of the osteocyte video analysis pipeline comparing performance between wildtype and LTBP3-deficient (mutant) cells.
 ├── data/
 │ ├── raw/
 │ │ ├── wildtype/
@@ -176,6 +177,11 @@ Explore morphological analysis:
 ```bash
 cd /.../Osteocytes-Summer-Project-2025/Osteocytes culture
 jupyter notebook notebooks/morphology.ipynb
+```
+Explore timing analysis of the pipeline:
+```bash
+cd /.../Osteocytes-Summer-Project-2025/Osteocytes culture
+jupyter notebook notebooks/timing_analysis.ipynb
 ```
 
 ## Outputs
