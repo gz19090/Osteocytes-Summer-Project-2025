@@ -1,5 +1,5 @@
 # Osteocyte 2D Cell Culture Analysis
-This project analyzes videos of 2D osteocyte cell cultures to segment and quantify cells and dendritic processes using parabolic FFT filtering and contour-based segmentation. It processes videos in `wildtype` and `mutant` conditions, generating metrics (cell area, intensity, eccentricity, dendrite count), per‑frame timing profiles, and visualizations (edge filter plots, contour overlays, segmentation masks, histograms, skeleton overlays) for user-specified frames.
+This project analyzes videos of 2D osteocyte cell cultures to segment and quantify cells and dendritic processes using parabolic FFT filtering and contour-based segmentation. It processes videos in `wildtype` and `mutant` conditions, generating metrics (cell area, intensity, eccentricity, dendrite count), per-frame timing profiles, and visualizations (edge filter plots, contour overlays, segmentation masks, histograms, skeleton overlays) for user-specified frames.
 
 ## Project Structure
 ```
@@ -84,6 +84,9 @@ Osteocytes culture/
 │ │ │ ├── percentile_results.csv
 │ │ │ ├── percentile_vs_num_cells.png
 │ │ │ ├── percentile_comparison_90_95.png
+│ │ ├── timing_analysis/
+│ │ │ ├── speedup_comparison.png
+│ │ │ ├── ...
 │ ├── metrics/
 │ │ ├── wildtype/
 │ │ │ ├── Confluence_Single movie_30.03.2025_no mask_C4_1_metrics.csv
@@ -95,7 +98,6 @@ Osteocytes culture/
 │ │ │ ├── ...
 │ ├── morph_plots/
 │ │ ├── correlation_heatmap.png
-│ │ ├── correlation_network.png
 │ │ ├── histogram_plots.png
 │ │ ├── ...
 ├── README.md
@@ -115,6 +117,7 @@ Osteocytes culture/
 3. Place videos in `data/raw/wildtype/` and `data/raw/mutant/` in MP4 format.
 
 ## Scripts
+
 ### main_workflow.py
 Processes all videos in `data/raw/wildtype/` and `data/raw/mutant/`, applying background correction, Fourier filtering, edge detection, and contour-based segmentation. Generates metrics (cell area, intensity, eccentricity, dendrite count) and visualizations (edge filters, contours, segmentation masks, histograms, skeleton overlays) for each frame. Optimized with parallel processing (using 4-8 processes) and configurable frame subsampling (default: process all frames) for efficient execution.
 
@@ -139,8 +142,7 @@ python scripts/main_workflow.py
 - Processed images: `data/processed/<condition>/<video_name>/frame_XXXX/`
 - Visualizations: `results/figures/<condition>/<video_name>/frame_XXXX/` (includes `skeletons/` subfolder for overlays comparing full skeletons vs dendrite skeletons used for counting).
 - Metrics: `results/metrics/<condition>/<video_name>_metrics.csv`
-- Records **per‑frame timings** for preprocessing, segmentation, metrics, I/O, visualization, and total runtime. Saves timings to `results/metrics/<condition>/<video_name>_timings.csv`.
-
+- Records **per-frame timings** for preprocessing, segmentation, metrics, I/O, visualization, and total runtime. Saves timings to `results/metrics/<condition>/<video_name>_timings.csv`.
 
 ### analyze_percentiles.py
 Analyzes cell segmentation across percentiles (80–99) to determine the optimal percentile for thresholding. Generates:
@@ -193,6 +195,11 @@ jupyter notebook notebooks/timing_analysis.ipynb
 - `percentile_results.csv`: Cell counts per percentile.
 - `percentile_vs_num_cells.png`: Plot of cell counts with optimal percentile.
 - `percentile_comparison_90_95.png`: Side-by-side comparison of labeled cells and original image for percentiles 90–95.
+- Timing analysis: `results/figures/timing_analysis/`
+- `avg_time_per_stage.png`: Bar plot showing the average time for each processing stage.
+- `speedup_comparison.png`: Bar plot comparing sequential and parallel processing times, showing average 8.0x speedup.
+- `total_time_breakdown.png`: Stacked bar plot showing the total processing time for each video, split by stage.
+- `total_time_per_frame.png`: Box plot showing the range of total processing times per frame for each video. 
 
 ## Dependencies
 See `requirements.txt`. Key libraries:
@@ -221,9 +228,19 @@ See `requirements.txt`. Key libraries:
 - dendrite_count is computed from protrusion skeletons: if a skeleton has fewer than two branches, it is considered non-dendritic (0).
 - For performance with many frames, set a smaller `max_frames` (e.g., 10) or increase `--subsample-rate` (e.g., 5 for every 5th frame). Parallel processing (4-8 processes) improves runtime efficiency.
 
-### Quick Timing Summary (optional)
-After a run, you can quickly summarize average stage times in terminal (Python one‑liner):
+## Performance and Optimization
+The osteocyte video analysis pipeline leverages parallel processing with 4-8 processes, achieving an **average 8.0x speedup** (e.g., 59.05 min to 7.38 min for `Confluence_Single movie_30.03.2025_no mask_C2_3` wildtype), as shown in `results/figures/timing_analysis/speedup_comparison.png`. Total CPU time for 6 videos (144 frames each) is **~350.38 min**, reduced to **~43.8 min** wall-clock time with 8 processes. Bar plot analysis (`timing_analysis.ipynb`) identifies Metrics (**45.61 s** wildtype, **43.34 s** mutant), Visualize (**23.81 s** wildtype, **23.52 s** mutant), and Crop (**4.62 s** wildtype, **4.21 s** mutant) as primary bottlenecks. Box plot results show high variability in per-frame processing times, particularly for C2_3 (wildtype, median **75.96 s**) and G5_1 (mutant, median **70.55 s**), with wildtype videos slightly slower, likely due to cell morphology complexity.
 
+**Future Improvements**:
+1. Optimize Metrics and Visualize stages through algorithmic improvements.
+2. Enhance Crop stage with adaptive cropping based on frame content.
+3. Leverage AWS high-performance computing (e.g., EC2 instances) for GPU-accelerated processing.
+4. Reduce variability (e.g., in C2_3) with adaptive subsampling or dynamic resource allocation.
+5. Implement asynchronous I/O with `aiofiles` to minimize overhead.
+6. Enable parallel video processing and caching of intermediate results.
+
+## Quick Timing Summary (optional)
+After a run, you can quickly summarize average stage times in terminal (Python one-liner):
 ```bash
 python - <<'PY'
 import pandas as pd, glob
