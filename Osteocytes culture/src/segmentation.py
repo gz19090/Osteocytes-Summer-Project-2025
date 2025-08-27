@@ -99,7 +99,7 @@ def apply_edge_filters(image: np.ndarray, sigma: float = 1.0) -> tuple[np.ndarra
     
     return combined, weights
 
-def segment_cells(image: np.ndarray, min_area: int = 50, use_percentile: bool = False, percentile: float = 94,
+def segment_cells(image: np.ndarray, min_area: int = 20, use_percentile: bool = False, percentile: float = 90,
                  crop: tuple = None, use_adaptive: bool = False, refine: bool = False, beta: float = 1000) -> tuple:
     """Segment osteocyte cells in an image using edge detection and contour filling.
     This function processes a grayscale image to identify and label individual cells by:
@@ -108,9 +108,9 @@ def segment_cells(image: np.ndarray, min_area: int = 50, use_percentile: bool = 
     
     Args:
         image (np.ndarray): Preprocessed 2D grayscale image.
-        min_area (int): Minimum cell area to keep (default: 50 pixels).
+        min_area (int): Minimum cell area to keep (default: 20 pixels).
         use_percentile (bool): Use percentile-based thresholding (default: False).
-        percentile (float): Percentile value for thresholding (default: 94).
+        percentile (float): Percentile value for thresholding (default: 90).
         crop (tuple): Region to crop (y1, y2, x1, x2) or None.
         use_adaptive (bool): Use adaptive thresholding (default: False).
         refine (bool): Use random walker to refine segmentation (default: False).

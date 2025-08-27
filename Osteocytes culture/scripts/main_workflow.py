@@ -192,7 +192,7 @@ def process_frame(args):
         logger.error(f"Error processing frame {frame_idx} of {video_path}: {e}")
         return None, None, None
 
-def main(max_frames: int = None, min_area: int = 50, use_percentile: bool = True, percentile: float = 90.0,
+def main(max_frames: int = None, min_area: int = 20, use_percentile: bool = True, percentile: float = 90.0,
          crop: tuple = (40, 150, 250, 512), num_wildtype: int = 3, num_mutant: int = 3, 
          subsample_rate: int = 1, dpi: int = 100):
     """
@@ -353,8 +353,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Process osteocyte videos with improved frame-level parallelism.")
     parser.add_argument('--max-frames', type=int, default=None,
                         help='Maximum number of frames to process per video (default: None, prompts user)')
-    parser.add_argument('--min-area', type=int, default=50,
-                        help='Minimum area for segmented objects (default: 50)')
+    parser.add_argument('--min-area', type=int, default=20,
+                        help='Minimum area for segmented objects (default: 20)')
     parser.add_argument('--use-percentile', action='store_true',
                         help='Use percentile thresholding instead of Otsu (default: False)')
     parser.add_argument('--percentile', type=float, default=90,

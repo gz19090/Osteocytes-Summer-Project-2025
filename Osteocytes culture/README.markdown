@@ -140,7 +140,7 @@ Analyzes cell segmentation across percentiles (80–99) for all videos in `data/
 ```bash
 python scripts/analyze_percentiles.py
 ```
-- Processes all videos in `data/raw/wildtype/` and `data/raw/mutant/` (default: `max_frames=1`, `min_area=50`, `dpi=150` for plots).
+- Processes all videos in `data/raw/wildtype/` and `data/raw/mutant/` (default: `max_frames=1`, `min_area=20`, `dpi=150` for plots).
 - Outputs saved in `results/figures/percentile_analysis/`.
 
 **Choosing the Optimal Percentile**:
@@ -209,7 +209,7 @@ See `requirements.txt`. Key libraries:
 
 ## Notes
 - Videos must be in MP4 format and placed in `data/raw/wildtype/` or `data/raw/mutant/`.
-- Adjust `min_area` in `segment_cells` (in `src/segmentation.py`) if too few cells are detected (e.g., `min_area=50`).
+- Adjust `min_area` in `segment_cells` (in `src/segmentation.py`) if too few cells are detected (e.g., `min_area=10`).
 - The default percentile in `main_workflow.py` is 90, validated by `analyze_percentiles.py` across all videos. Run `analyze_percentiles.py` to confirm or select a better value.
 - dendrite_count is computed from protrusion skeletons: if a skeleton has fewer than two branches, it is considered non-dendritic (0).
 - For performance with many frames, set a smaller `max_frames` (e.g., 48) or increase `--subsample-rate` (e.g., 5 for every 5th frame). Parallel processing (4–8 processes), batch I/O, and DPI control improve runtime efficiency.
