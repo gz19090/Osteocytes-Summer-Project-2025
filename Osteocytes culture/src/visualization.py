@@ -362,8 +362,9 @@ def plot_skeleton_overlays(
         alpha_mask: float = 0.38,
         # colors
         fill_color: str = "#FFA726",  # orange
-        outline_color: str = "saddlebrown",
-):
+        outline_color: str = "saddlebrown", 
+        dpi: int = 150):
+
     """Create and save plots showing cell skeletons overlaid on a grayscale background.
     For each cell, two plots are made: one with the full skeleton (light gray) and one
     with only the dendrite skeleton (white), showing the counted dendrites.
@@ -380,6 +381,7 @@ def plot_skeleton_overlays(
         alpha_mask (float): Transparency for cell fill (default: 0.38).
         fill_color (str): Color for cell fill (default: orange).
         outline_color (str): Color for cell outline (default: saddlebrown).
+        dpi (int): Image resolution (default: 150).
     """
     # Check if inputs are valid
     if not isinstance(labeled, np.ndarray) or labeled.ndim != 2 or labeled.size == 0:
@@ -462,6 +464,6 @@ def plot_skeleton_overlays(
         # Save the plot
         out_path = Path(output_dir) / f"skeleton_overlay_label_{i}.png"
         try:
-            plt.savefig(out_path, dpi=180, bbox_inches="tight")
+            plt.savefig(out_path, bbox_inches="tight", dpi=dpi)
         finally:
             plt.close(fig)  # Always close to free memory
