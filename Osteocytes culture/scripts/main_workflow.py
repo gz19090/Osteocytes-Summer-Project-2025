@@ -205,7 +205,7 @@ def process_frame(args):
         return None, None, None
 
 
-def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = False, percentile: float = 94.0,
+def main(max_frames: int = None, min_area: int = 10, use_percentile: bool = False, percentile: float = 90.0,
          crop: tuple = None, num_wildtype: int = None, num_mutant: int = None, subsample_rate: int = 1):
     """
     Run the full pipeline to process osteocyte videos and generate analysis results.
@@ -369,8 +369,8 @@ if __name__ == '__main__':
                         help='Minimum area for segmented objects (default: 10)')
     parser.add_argument('--use-percentile', action='store_true',
                         help='Use percentile thresholding instead of Otsu (default: False)')
-    parser.add_argument('--percentile', type=float, default=94,
-                        help='Percentile for thresholding if use_percentile=True (default: 94)')
+    parser.add_argument('--percentile', type=float, default=90,
+                        help='Percentile for thresholding if use_percentile=True (default: 90)')
     parser.add_argument('--crop', type=int, nargs=4, default=None,
                         help='Crop region as y1 y2 x1 x2 (default: None, no cropping)')
     parser.add_argument('--num-wildtype', type=int, default=None,

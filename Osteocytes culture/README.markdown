@@ -133,7 +133,7 @@ python scripts/main_workflow.py
 - `--max-frames`: Number of frames to process per video (default: None, prompts user).
 - `--min-area`: Minimum area for segmented cells (default: 10).
 - `--use-percentile`: Use percentile thresholding instead of Otsu (default: False).
-- `--percentile`: Percentile for thresholding (default: 94, recommended based on analysis).
+- `--percentile`: Percentile for thresholding (default: 90, recommended based on analysis).
 - `--crop`: Crop region as `y1 y2 x1 x2` (optional).
 - `--num-wildtype`/`--num-mutant`: Number of videos to process per condition (default: None, all).
 - `--subsample-rate`: Process every nth frame (default: 1, process all frames; e.g., 5 for every 5th frame).
