@@ -206,6 +206,8 @@ See `requirements.txt`. Key libraries:
 - `pytest`
 - `joblib`
 - `pyamg`
+- `imbalanced-learn>=0.12.4` 
+- `xgboost>=2.1.1`
 
 ## Notes
 - Videos must be in MP4 format and placed in `data/raw/wildtype/` or `data/raw/mutant/`.
